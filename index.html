@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="es" x-data="app()" x-init="init()" :class="{'dark': darkMode}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MiHistorialMédico</title>
+  <meta name="description" content="Historial médico personal y familiar" />
+  <meta name="theme-color" content="#0ea5e9" />
+  <link rel="manifest" href="#" id="manifest-link" />
+
+  <!-- App JS: define Tailwind config first, then app logic after CDN/libs load -->
+  <script src="app.js"></script>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- Dexie.js (IndexedDB) -->
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+
+  <!-- Firebase v9 Compat -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body class="bg-slate-50 dark:bg-slate-900 min-h-screen text-slate-800 dark:text-white transition-colors duration-300" x-cloak>
+
+  <!-- ===================== TOAST ===================== -->
+  <template x-if="toast.show">
+    <div class="toast" :class="toast.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'">
+      <span x-text="toast.type === 'error' ? '✕' : '✓'" class="text-base"></span>
+      <span x-text="toast.msg"></span>
+    </div>
+  </template>
+
+  <!-- ===================== LOGIN ===================== -->
+  <div x-show="screen === 'login'" class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-sm">
+      <!-- Logo -->
+      <div class="text-center mb-8">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl gradient-header mb-4 shadow-lg">
+          <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+        </div>
+        <h1 class="text-2xl font-bold text-slate-800 dark:text-white">MiHistorial<span class="text-sky-500">Médico</span></h1>
+        <p class="text-slate-500 dark:text-slate-400 text-sm mt-1">Tu historial de salud de por vida</p>
+      </div>
+
+      <!-- Form -->
+      <div class="card p-6">
+        <div class="flex rounded-xl bg-slate-100 dark:bg-slate-700 p-1 mb-6">
+          <button class="flex-1 py-2 rounded-lg text-sm font-semibold transition-all" :class="loginTab === 'login' ? 'bg-white dark:bg-slate-600 shadow text-sky-600 dark:text-sky-400' : 'text-slate-500'" @click="loginTab='login'">Iniciar sesión</button>
+          <button class="flex-1 py-2 rounded-lg text-sm font-semibold transition-all" :class="loginTab === 'register' ? 'bg-white dark:bg-slate-600 shadow text-sky-600 dark:text-sky-400' : 'text-slate-500'" @click="loginTab='register'">Registrarse</button>
+        </div>
+
+        <div class="space-y-4">
+          <div>
+            <label class="label">Correo electrónico</label>
+            <input type="email" class="input" x-model="loginForm.email" placeholder="tu@correo.com" @keydown.enter="doAuth()" />
+          </div>
+          <div>
+            <label class="label">Contraseña</label>
+            <input type="password" class="input" x-model="loginForm.password" placeholder="••••••••" @keydown.enter="doAuth()" />
+          </div>
+          <button class="btn-primary w-full justify-center" @click="doAuth()" :disabled="authLoading">
+            <span x-show="!authLoading" x-text="loginTab === 'login' ? 'Entrar' : 'Crear cuenta'"></span>
+            <span x-show="authLoading">Cargando...</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Config notice -->
+      <div id="config-notice" class="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-xs" style="display:none">
+        ⚠️ <strong>Configura Firebase:</strong> Busca <code>FIREBASE_CONFIG</code> en el código y reemplaza con tus credenciales.
+      </div>
+
+      <p class="text-center text-xs text-slate-400 mt-6">🔒 Datos cifrados y privados · Solo para uso personal</p>
+    </div>
+  </div>
+
+  <!-- ===================== PROFILE SELECT ===================== -->
+  <div x-show="screen === 'profiles'" class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+      <div class="text-center mb-8">
+        <h2 class="text-xl font-bold">¿Quién eres hoy?</h2>
+        <p class="text-slate-500 dark:text-slate-400 text-sm">Selecciona tu perfil</p>
+      </div>
+
+      <div class="space-y-3" x-show="profiles.length > 0">
+        <template x-for="p in profiles" :key="p.id">
+          <button class="card card-hover w-full text-left flex items-center gap-4 p-4" @click="selectProfile(p)">
+            <div class="avatar text-lg" :style="`background: ${p.color}`" x-text="p.emoji || p.name[0]"></div>
+            <div class="flex-1">
+              <div class="font-semibold" x-text="p.name"></div>
+              <div class="text-sm text-slate-500" x-text="getAge(p.birthdate) + ' años · ' + p.relation"></div>
+            </div>
+            <svg class="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          </button>
+        </template>
+      </div>
+
+      <!-- New profile -->
+      <button class="w-full mt-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl text-slate-500 text-sm font-medium hover:border-sky-400 hover:text-sky-500 transition" @click="openModal('newProfile')">
+        + Nuevo perfil
+      </button>
+
+      <button class="w-full mt-3 text-xs text-slate-400 hover:text-slate-600" @click="doLogout()">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <!-- ===================== APP SHELL ===================== -->
+  <div x-show="screen === 'app'" class="flex h-screen overflow-hidden">
+
+    <!-- SIDEBAR (desktop) -->
+    <aside class="hidden lg:flex flex-col w-64 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex-shrink-0">
+      <!-- Header -->
+      <div class="p-5 border-b border-slate-100 dark:border-slate-700">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-xl gradient-header flex items-center justify-center">
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+          </div>
+          <span class="font-bold text-sm">MiHistorial<span class="text-sky-500">Médico</span></span>
+        </div>
+      </div>
+
+      <!-- Profile badge -->
+      <div class="p-4 border-b border-slate-100 dark:border-slate-700">
+        <button class="flex items-center gap-3 w-full hover:bg-slate-50 dark:hover:bg-slate-700 p-2 rounded-xl transition" @click="screen='profiles'">
+          <div class="avatar text-sm" :style="`background: ${currentProfile?.color}`" x-text="currentProfile?.emoji || currentProfile?.name?.[0]"></div>
+          <div class="flex-1 min-w-0 text-left">
+            <div class="text-sm font-semibold truncate" x-text="currentProfile?.name"></div>
+            <div class="text-xs text-slate-400" x-text="getAge(currentProfile?.birthdate) + ' años'"></div>
+          </div>
+          <svg class="w-3.5 h-3.5 text-slate-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l4-4 4 4m0 6l-4 4-4-4"/></svg>
+        </button>
+      </div>
+
+      <!-- Nav -->
+      <nav class="flex-1 p-3 space-y-0.5 overflow-y-auto">
+        <template x-for="item in navItems" :key="item.id">
+          <button class="sidebar-link w-full" :class="activeSection === item.id ? 'active' : ''" @click="activeSection = item.id">
+            <span class="text-base" x-text="item.icon"></span>
+            <span x-text="item.label"></span>
+            <span x-show="item.badge" class="ml-auto badge bg-sky-100 text-sky-700 text-xs" x-text="item.badge"></span>
+          </button>
+        </template>
+      </nav>
+
+      <!-- Footer -->
+      <div class="p-3 border-t border-slate-100 dark:border-slate-700 space-y-0.5">
+        <button class="sidebar-link w-full" @click="exportCSV()">📤 Exportar CSV</button>
+        <button class="sidebar-link w-full" @click="darkMode = !darkMode">
+          <span x-text="darkMode ? '☀️' : '🌙'"></span>
+          <span x-text="darkMode ? 'Modo claro' : 'Modo oscuro'"></span>
+        </button>
+        <button class="sidebar-link w-full text-red-500 hover:text-red-600" @click="doLogout()">🚪 Salir</button>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+      <!-- Top bar (mobile) -->
+      <div class="lg:hidden flex items-center justify-between px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+        <div class="flex items-center gap-2.5">
+          <div class="avatar w-8 h-8 text-xs" :style="`background: ${currentProfile?.color}`" x-text="currentProfile?.emoji || currentProfile?.name?.[0]"></div>
+          <span class="font-semibold text-sm" x-text="navItems.find(n=>n.id===activeSection)?.label"></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button @click="quickSwitchProfile()" class="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 text-xs font-semibold border border-sky-100 dark:border-sky-800" :title="profileSwitchTitle()">
+            <span x-text="nextProfile()?.emoji || '👥'"></span>
+            <span>Cambiar</span>
+          </button>
+          <button @click="darkMode = !darkMode" class="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700">
+            <span x-text="darkMode ? '☀️' : '🌙'"></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Scrollable content -->
+      <div class="flex-1 overflow-y-auto p-4 lg:p-6 pb-24 lg:pb-6">
+
+        <!-- ===== DASHBOARD ===== -->
+        <div x-show="activeSection === 'dashboard'" class="animate-fade-in space-y-5">
+          <!-- Welcome -->
+          <div class="gradient-header rounded-2xl p-6 text-white">
+            <div class="flex items-start justify-between">
+              <div>
+                <p class="text-sky-200 text-sm">Bienvenido/a,</p>
+                <h2 class="text-2xl font-bold mt-0.5" x-text="currentProfile?.name"></h2>
+                <p class="text-sky-200 text-sm mt-1" x-text="getAge(currentProfile?.birthdate) + ' años · ' + formatDate(new Date())"></p>
+              </div>
+              <div class="flex flex-col items-end gap-3">
+                <button class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 border border-white/25 text-white text-xs font-semibold backdrop-blur transition active:scale-95"
+                        @click="quickSwitchProfile()"
+                        :title="profileSwitchTitle()">
+                  <span class="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-base" x-text="nextProfile()?.emoji || '👥'"></span>
+                  <span class="hidden sm:inline" x-text="profileSwitchLabel()"></span>
+                  <span class="sm:hidden">Cambiar</span>
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4"/></svg>
+                </button>
+                <div class="text-4xl" x-text="currentProfile?.emoji || '👤'"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick stats -->
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <template x-for="stat in dashboardStats" :key="stat.label">
+              <div class="card text-center">
+                <div class="text-2xl font-bold text-sky-600 dark:text-sky-400" x-text="stat.value"></div>
+                <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5" x-text="stat.label"></div>
+              </div>
+            </template>
+          </div>
+
+          <!-- Medicamentos hoy -->
+          <div class="card" x-show="todayMeds.length > 0">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold flex items-center gap-2">💊 Medicamentos de hoy</h3>
+              <span class="badge bg-amber-100 text-amber-700" x-text="todayMeds.filter(m=>!m.taken).length + ' pendientes'"></span>
+            </div>
+            <div class="space-y-2">
+              <template x-for="med in todayMeds" :key="med.id">
+                <div class="flex items-center gap-3 p-3 rounded-xl" :class="med.taken ? 'bg-green-50 dark:bg-green-900/20' : 'bg-amber-50 dark:bg-amber-900/20'">
+                  <button class="w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all" :class="med.taken ? 'border-green-500 bg-green-500' : 'border-amber-400 hover:border-green-500'" @click="toggleMedTaken(med)">
+                    <svg x-show="med.taken" class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+                  </button>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm font-medium" x-text="med.name"></div>
+                    <div class="text-xs text-slate-500" x-text="med.dose"></div>
+                  </div>
+                  <span class="text-xs font-medium" :class="med.taken ? 'text-green-600' : 'text-amber-600'" x-text="med.taken ? 'Tomado' : 'Pendiente'"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Recordatorios -->
+          <div class="card" x-show="upcomingReminders.length > 0">
+            <h3 class="font-semibold mb-3">🗓️ Próximos recordatorios</h3>
+            <div class="space-y-2">
+              <template x-for="r in upcomingReminders" :key="r.id">
+                <div class="flex items-center gap-3 p-3 bg-sky-50 dark:bg-sky-900/20 rounded-xl">
+                  <div class="text-sky-500 text-lg">📅</div>
+                  <div class="flex-1">
+                    <div class="text-sm font-medium" x-text="r.title"></div>
+                    <div class="text-xs text-slate-500" x-text="r.daysLeft > 0 ? 'En ' + r.daysLeft + ' días' : r.daysLeft === 0 ? 'Hoy' : 'Vencido'"></div>
+                  </div>
+                  <span class="badge" :class="r.daysLeft <= 7 ? 'bg-red-100 text-red-700' : 'bg-sky-100 text-sky-700'" x-text="r.daysLeft + 'd'"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Últimas entradas -->
+          <div class="card">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold">🕐 Últimas entradas</h3>
+              <button class="text-xs text-sky-500 hover:text-sky-600" @click="activeSection='timeline'">Ver todo</button>
+            </div>
+            <div class="space-y-2" x-show="recentEntries.length > 0">
+              <template x-for="e in recentEntries.slice(0,5)" :key="e.id">
+                <div class="flex items-center gap-3 p-2.5 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-xl transition cursor-pointer" @click="activeSection='timeline'">
+                  <div class="timeline-dot" :style="`background: ${categoryColor(e.category)}`"></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm font-medium truncate" x-text="e.title"></div>
+                    <div class="text-xs text-slate-400" x-text="formatDate(e.date?.toDate ? e.date.toDate() : new Date(e.date)) + ' · ' + categoryLabel(e.category)"></div>
+                  </div>
+                </div>
+              </template>
+            </div>
+            <div x-show="recentEntries.length === 0" class="text-center py-6 text-slate-400 text-sm">
+              No hay entradas aún. ¡Empieza registrando algo!
+            </div>
+          </div>
+
+          <!-- Add reminder button -->
+          <button class="btn-secondary w-full justify-center" @click="openModal('reminder')">
+            + Agregar recordatorio
+          </button>
+        </div>
+
+        <!-- ===== TIMELINE ===== -->
+        <div x-show="activeSection === 'timeline'" class="animate-fade-in">
+          <div class="flex flex-wrap items-center gap-3 mb-5">
+            <h2 class="text-lg font-bold flex-1">🕐 Timeline completo</h2>
+            <select class="input w-auto text-xs" x-model="timelineFilter">
+              <option value="">Todos los tipos</option>
+              <option value="examen">Exámenes</option>
+              <option value="consulta">Consultas</option>
+              <option value="medicamento">Medicamentos</option>
+              <option value="vacuna">Vacunas</option>
+              <option value="cirugia">Cirugías</option>
+              <option value="medicion">Mediciones</option>
+              <option value="alergia">Alergias</option>
+            </select>
+            <input type="date" class="input w-auto text-xs" x-model="timelineStartDate" />
+          </div>
+
+          <!-- Timeline list -->
+          <div class="relative">
+            <div class="absolute left-4 top-0 bottom-0 w-px bg-slate-200 dark:bg-slate-700"></div>
+            <div class="space-y-3 pl-10">
+              <template x-for="e in filteredTimeline" :key="e.id">
+                <div class="card card-hover relative" @click="openEntryDetail(e)">
+                  <div class="absolute -left-[2.65rem] top-5 w-4 h-4 rounded-full border-2 border-white dark:border-slate-800 shadow" :style="`background: ${categoryColor(e.category)}`"></div>
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2 flex-wrap mb-1">
+                        <span class="chip border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300" x-text="categoryLabel(e.category)"></span>
+                        <span class="text-xs text-slate-400" x-text="formatDate(e.date?.toDate ? e.date.toDate() : new Date(e.date))"></span>
+                      </div>
+                      <div class="font-semibold text-sm" x-text="e.title"></div>
+                      <div x-show="e.notes" class="text-xs text-slate-500 mt-1 line-clamp-2" x-text="e.notes"></div>
+                    </div>
+                    <button class="text-slate-300 hover:text-red-400 transition flex-shrink-0" @click.stop="deleteEntry(e)">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </template>
+              <div x-show="filteredTimeline.length === 0" class="card text-center py-10 text-slate-400">No hay registros con este filtro.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== EXÁMENES ===== -->
+        <div x-show="activeSection === 'examenes'" class="animate-fade-in space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-bold">🔬 Exámenes y Labs</h2>
+            <button class="btn-primary" @click="openModal('examen')">+ Agregar</button>
+          </div>
+
+          <div class="grid gap-3">
+            <template x-for="e in examenes" :key="e.id">
+              <div class="card card-hover" @click="openEntryDetail(e)">
+                <div class="flex items-start gap-3">
+                  <div class="w-10 h-10 rounded-xl bg-sky-100 dark:bg-sky-900/50 flex items-center justify-center text-sky-600 text-lg flex-shrink-0">🔬</div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between gap-2">
+                      <div>
+                        <div class="font-semibold text-sm" x-text="e.title"></div>
+                        <div class="text-xs text-slate-500 mt-0.5" x-text="e.lab + ' · ' + formatDate(e.date?.toDate ? e.date.toDate() : new Date(e.date))"></div>
+                      </div>
+                      <span class="chip border-sky-200 bg-sky-50 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300 dark:border-sky-800 flex-shrink-0" x-text="e.subtype || 'General'"></span>
+                    </div>
+                    <div x-show="e.result" class="mt-2 text-xs bg-slate-50 dark:bg-slate-700 rounded-lg px-3 py-2 text-slate-600 dark:text-slate-300" x-text="'Resultado: ' + e.result"></div>
+                    <div x-show="e.fileUrl" class="mt-2">
+                      <a :href="e.fileUrl" target="_blank" class="text-xs text-sky-500 hover:underline flex items-center gap-1" @click.stop>
+                        📎 Ver archivo adjunto
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <div x-show="examenes.length === 0" class="card text-center py-10 text-slate-400">Sin exámenes registrados.</div>
+          </div>
+        </div>
+
+        <!-- ===== MEDICAMENTOS ===== -->
+        <div x-show="activeSection === 'medicamentos'" class="animate-fade-in space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-bold">💊 Medicamentos</h2>
+            <button class="btn-primary" @click="openModal('medicamento')">+ Agregar</button>
+          </div>
+
+          <!-- Tabs: activos / historial -->
+          <div class="flex rounded-xl bg-slate-100 dark:bg-slate-700 p-1">
+            <button class="flex-1 py-2 rounded-lg text-sm font-semibold transition-all" :class="medTab === 'activos' ? 'bg-white dark:bg-slate-600 shadow text-sky-600 dark:text-sky-400' : 'text-slate-500'" @click="medTab='activos'">Activos</button>
+            <button class="flex-1 py-2 rounded-lg text-sm font-semibold transition-all" :class="medTab === 'historial' ? 'bg-white dark:bg-slate-600 shadow text-sky-600 dark:text-sky-400' : 'text-slate-500'" @click="medTab='historial'">Historial</button>
+          </div>
+
+          <div class="space-y-3">
+            <template x-for="m in medicamentos.filter(m => medTab === 'activos' ? m.active : !m.active)" :key="m.id">
+              <div class="card">
+                <div class="flex items-start gap-3">
+                  <div class="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-xl flex-shrink-0">💊</div>
+                  <div class="flex-1">
+                    <div class="flex items-start justify-between">
+                      <div>
+                        <div class="font-semibold" x-text="m.name"></div>
+                        <div class="text-xs text-slate-500 mt-0.5" x-text="m.dose + ' · ' + m.frequency"></div>
+                      </div>
+                      <span class="badge" :class="m.active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'" x-text="m.active ? 'Activo' : 'Terminado'"></span>
+                    </div>
+                    <div class="flex items-center gap-4 mt-3 text-xs text-slate-500">
+                      <span x-show="m.startDate">📅 Inicio: <span class="text-slate-700 dark:text-slate-300" x-text="formatDate(m.startDate?.toDate ? m.startDate.toDate() : new Date(m.startDate))"></span></span>
+                      <span x-show="m.stock">📦 Stock: <span class="font-semibold text-slate-700 dark:text-slate-300" x-text="m.stock + ' unidades'"></span></span>
+                    </div>
+                    <!-- Toma de hoy -->
+                    <div x-show="m.active" class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 flex items-center gap-2">
+                      <button class="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg transition-all" :class="isTakenToday(m.id) ? 'bg-green-100 text-green-700' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'" @click="toggleMedTakenById(m.id, m.name, m.dose)">
+                        <span x-text="isTakenToday(m.id) ? '✓ Tomado hoy' : 'Marcar como tomado hoy'"></span>
+                      </button>
+                      <button class="text-xs text-slate-400 hover:text-red-400 ml-auto" @click="deleteEntry(m)">Eliminar</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <div x-show="medicamentos.filter(m => medTab === 'activos' ? m.active : !m.active).length === 0" class="card text-center py-10 text-slate-400">
+              <span x-text="medTab === 'activos' ? 'Sin medicamentos activos.' : 'Sin historial de medicamentos.'"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== CONSULTAS ===== -->
+        <div x-show="activeSection === 'consultas'" class="animate-fade-in space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-bold">🏥 Consultas y Controles</h2>
+            <button class="btn-primary" @click="openModal('consulta')">+ Agregar</button>
+          </div>
+
+          <div class="space-y-3">
+            <template x-for="c in consultas" :key="c.id">
+              <div class="card card-hover" @click="openEntryDetail(c)">
+                <div class="flex items-start gap-3">
+                  <div class="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-xl flex-shrink-0">🏥</div>
+                  <div class="flex-1">
+                    <div class="flex items-start justify-between gap-2">
+                      <div>
+                        <div class="font-semibold text-sm" x-text="c.title"></div>
+                        <div class="text-xs text-slate-500 mt-0.5" x-text="c.doctor + ' · ' + c.specialty"></div>
+                      </div>
+                      <span class="text-xs text-slate-400 flex-shrink-0" x-text="formatDate(c.date?.toDate ? c.date.toDate() : new Date(c.date))"></span>
+                    </div>
+                    <div x-show="c.diagnosis" class="mt-2 text-xs bg-emerald-50 dark:bg-emerald-900/20 rounded-lg px-3 py-2 text-emerald-800 dark:text-emerald-300" x-text="'Diagnóstico: ' + c.diagnosis"></div>
+                    <div x-show="c.notes" class="mt-1 text-xs text-slate-500 line-clamp-2" x-text="c.notes"></div>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <div x-show="consultas.length === 0" class="card text-center py-10 text-slate-400">Sin consultas registradas.</div>
+          </div>
+        </div>
+
+        <!-- ===== VACUNAS ===== -->
+        <div x-show="activeSection === 'vacunas'" class="animate-fade-in space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-bold">💉 Vacunas</h2>
+            <button class="btn-primary" @click="openModal('vacuna')">+ Agregar</button>
+          </div>
+
+          <div class="space-y-2">
+            <template x-for="v in vacunas" :key="v.id">
+              <div class="card flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-xl flex-shrink-0">💉</div>
+                <div class="flex-1">
+                  <div class="font-semibold text-sm" x-text="v.name"></div>
+                  <div class="text-xs text-slate-500" x-text="formatDate(v.date?.toDate ? v.date.toDate() : new Date(v.date)) + (v.dose ? ' · Dosis ' + v.dose : '') + (v.center ? ' · ' + v.center : '')"></div>
+                  <div x-show="v.nextDate" class="text-xs text-purple-600 mt-0.5" x-text="'Próxima: ' + formatDate(v.nextDate?.toDate ? v.nextDate.toDate() : new Date(v.nextDate))"></div>
+                </div>
+                <button class="text-slate-300 hover:text-red-400 transition" @click="deleteEntry(v)">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </button>
+              </div>
+            </template>
+            <div x-show="vacunas.length === 0" class="card text-center py-10 text-slate-400">Sin vacunas registradas.</div>
+          </div>
+        </div>
+
+        <!-- ===== ALERGIAS ===== -->
+        <div x-show="activeSection === 'alergias'" class="animate-fade-in space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-bold">⚠️ Alergias</h2>
+            <button class="btn-primary" @click="openModal('alergia')">+ Agregar</button>
+          </div>
+          <div class="space-y-2">
+            <template x-for="a in alergias" :key="a.id">
+              <div class="card flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-xl flex-shrink-0">⚠️</div>
+                <div class="flex-1">
+                  <div class="font-semibold text-sm" x-text="a.name"></div>
+                  <div class="text-xs text-slate-500" x-text="(a.severity ? 'Severidad: ' + a.severity + ' · ' : '') + (a.reaction ? a.reaction : '')"></div>
+                  <div x-show="a.notes" class="text-xs text-slate-400 mt-0.5" x-text="a.notes"></div>
+                </div>
+                <span class="badge" :class="a.severity === 'Alta' ? 'bg-red-100 text-red-700' : a.severity === 'Media' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'" x-text="a.severity || 'Sin clasificar'"></span>
+                <button class="text-slate-300 hover:text-red-400 transition" @click="deleteEntry(a)">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </button>
+              </div>
+            </template>
+            <div x-show="alergias.length === 0" class="card text-center py-10 text-slate-400">Sin alergias registradas.</div>
+          </div>
+        </div>
+
+        <!-- ===== CIRUGÍAS ===== -->
+        <div x-show="activeSection === 'cirugias'" class="animate-fade-in space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-bold">🏨 Cirugías</h2>
+            <button class="btn-primary" @click="openModal('cirugia')">+ Agregar</button>
+          </div>
+          <div class="space-y-2">
+            <template x-for="c in cirugias" :key="c.id">
+              <div class="card flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center text-xl flex-shrink-0">🏨</div>
+                <div class="flex-1">
+                  <div class="font-semibold text-sm" x-text="c.name"></div>
+                  <div class="text-xs text-slate-500" x-text="formatDate(c.date?.toDate ? c.date.toDate() : new Date(c.date)) + (c.hospital ? ' · ' + c.hospital : '') + (c.surgeon ? ' · Dr/a. ' + c.surgeon : '')"></div>
+                  <div x-show="c.notes" class="text-xs text-slate-400 mt-0.5" x-text="c.notes"></div>
+                </div>
+                <button class="text-slate-300 hover:text-red-400 transition" @click="deleteEntry(c)">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </button>
+              </div>
+            </template>
+            <div x-show="cirugias.length === 0" class="card text-center py-10 text-slate-400">Sin cirugías registradas.</div>
+          </div>
+        </div>
+
+        <!-- ===== MEDICIONES ===== -->
+        <div x-show="activeSection === 'mediciones'" class="animate-fade-in space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-bold">📏 Mediciones corporales</h2>
+            <button class="btn-primary" @click="openModal('medicion')">+ Agregar</button>
+          </div>
+
+          <!-- Last measurement -->
+          <div class="card" x-show="mediciones.length > 0">
+            <h3 class="text-sm font-semibold text-slate-500 mb-3">Última medición</h3>
+            <div class="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div class="text-2xl font-bold text-sky-600" x-text="(mediciones[0]?.weight || '--') + ' kg'"></div>
+                <div class="text-xs text-slate-400">Peso</div>
+              </div>
+              <div>
+                <div class="text-2xl font-bold text-sky-600" x-text="(mediciones[0]?.height || '--') + ' cm'"></div>
+                <div class="text-xs text-slate-400">Estatura</div>
+              </div>
+              <div>
+                <div class="text-2xl font-bold text-sky-600" x-text="calcIMC(mediciones[0])"></div>
+                <div class="text-xs text-slate-400">IMC</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chart -->
+          <div class="card" x-show="mediciones.length > 1">
+            <h3 class="text-sm font-semibold mb-3">Evolución del peso</h3>
+            <canvas id="weightChart" height="120"></canvas>
+          </div>
+
+          <!-- List -->
+          <div class="space-y-2">
+            <template x-for="m in mediciones" :key="m.id">
+              <div class="card flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center text-xl flex-shrink-0">📏</div>
+                <div class="flex-1">
+                  <div class="text-sm font-semibold" x-text="formatDate(m.date?.toDate ? m.date.toDate() : new Date(m.date))"></div>
+                  <div class="text-xs text-slate-500" x-text="(m.weight ? m.weight + ' kg' : '') + (m.height ? ' · ' + m.height + ' cm' : '') + ' · IMC: ' + calcIMC(m)"></div>
+                </div>
+                <button class="text-slate-300 hover:text-red-400 transition" @click="deleteEntry(m)">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </button>
+              </div>
+            </template>
+            <div x-show="mediciones.length === 0" class="card text-center py-10 text-slate-400">Sin mediciones registradas.</div>
+          </div>
+        </div>
+
+        <!-- ===== DOCUMENTOS ===== -->
+        <div x-show="activeSection === 'documentos'" class="animate-fade-in space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-bold">📎 Documentos</h2>
+          </div>
+
+          <!-- Drop zone -->
+          <div class="drop-zone" id="dropZone" 
+               @dragover.prevent="$el.classList.add('dragging')"
+               @dragleave="$el.classList.remove('dragging')"
+               @drop.prevent="handleFileDrop($event); $el.classList.remove('dragging')">
+            <div class="text-4xl mb-2">📁</div>
+            <p class="text-slate-600 dark:text-slate-400 font-medium">Arrastra archivos aquí</p>
+            <p class="text-slate-400 text-sm mt-1">o</p>
+            <label class="mt-3 btn-secondary cursor-pointer inline-flex">
+              <input type="file" class="hidden" multiple @change="handleFileInput($event)" />
+              Seleccionar archivos
+            </label>
+          </div>
+
+          <!-- Upload progress -->
+          <div x-show="uploading" class="card flex items-center gap-3">
+            <div class="w-4 h-4 border-2 border-sky-500 border-t-transparent rounded-full animate-spin"></div>
+            <span class="text-sm">Subiendo archivos...</span>
+          </div>
+
+          <!-- Documents grid -->
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3" x-show="documents.length > 0">
+            <template x-for="d in documents" :key="d.id">
+              <div class="card card-hover flex flex-col items-center text-center p-4 gap-2">
+                <div class="text-3xl" x-text="fileIcon(d.type)"></div>
+                <div class="text-xs font-medium truncate w-full" x-text="d.name"></div>
+                <div class="text-xs text-slate-400" x-text="formatDate(d.date?.toDate ? d.date.toDate() : new Date(d.date))"></div>
+                <a :href="d.url" target="_blank" class="text-xs text-sky-500 hover:underline">Ver</a>
+              </div>
+            </template>
+          </div>
+          <div x-show="documents.length === 0" class="card text-center py-10 text-slate-400">Sin documentos. Sube el primero.</div>
+        </div>
+
+        <!-- ===== ESTADÍSTICAS ===== -->
+        <div x-show="activeSection === 'estadisticas'" class="animate-fade-in space-y-4">
+          <h2 class="text-lg font-bold">📊 Estadísticas</h2>
+
+          <!-- Annual summary -->
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="card text-center">
+              <div class="text-2xl font-bold text-sky-600" x-text="examenes.filter(e => new Date(e.date?.toDate ? e.date.toDate() : e.date).getFullYear() === new Date().getFullYear()).length"></div>
+              <div class="text-xs text-slate-500 mt-0.5">Exámenes <span class="font-medium" x-text="new Date().getFullYear()"></span></div>
+            </div>
+            <div class="card text-center">
+              <div class="text-2xl font-bold text-emerald-600" x-text="consultas.filter(c => new Date(c.date?.toDate ? c.date.toDate() : c.date).getFullYear() === new Date().getFullYear()).length"></div>
+              <div class="text-xs text-slate-500 mt-0.5">Consultas <span x-text="new Date().getFullYear()"></span></div>
+            </div>
+            <div class="card text-center">
+              <div class="text-2xl font-bold text-purple-600" x-text="vacunas.filter(v => new Date(v.date?.toDate ? v.date.toDate() : v.date).getFullYear() === new Date().getFullYear()).length"></div>
+              <div class="text-xs text-slate-500 mt-0.5">Vacunas <span x-text="new Date().getFullYear()"></span></div>
+            </div>
+            <div class="card text-center">
+              <div class="text-2xl font-bold text-teal-600" x-text="mediciones.length"></div>
+              <div class="text-xs text-slate-500 mt-0.5">Mediciones totales</div>
+            </div>
+          </div>
+
+          <!-- IMC chart -->
+          <div class="card" x-show="mediciones.length > 1">
+            <h3 class="text-sm font-semibold mb-3">Evolución del IMC</h3>
+            <canvas id="imcChart" height="140"></canvas>
+          </div>
+
+          <!-- Exams by type chart -->
+          <div class="card" x-show="examenes.length > 0">
+            <h3 class="text-sm font-semibold mb-3">Exámenes por tipo</h3>
+            <canvas id="examTypeChart" height="140"></canvas>
+          </div>
+
+          <!-- Consultas per year -->
+          <div class="card" x-show="consultas.length > 0">
+            <h3 class="text-sm font-semibold mb-3">Consultas por año</h3>
+            <canvas id="consultasChart" height="140"></canvas>
+          </div>
+        </div>
+
+      </div><!-- end scrollable content -->
+
+      <!-- BOTTOM NAV (mobile) -->
+      <nav class="lg:hidden flex items-center border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1">
+        <template x-for="item in mobileNavItems" :key="item.id">
+          <button class="bottom-nav-item flex-1" :class="activeSection === item.id ? 'active' : ''" @click="activeSection = item.id">
+            <span class="text-xl leading-none" x-text="item.icon"></span>
+            <span class="text-[10px] font-medium" x-text="item.label"></span>
+          </button>
+        </template>
+      </nav>
+    </main>
+  </div>
+
+  <!-- ===================== MODALS ===================== -->
+
+  <!-- Generic Modal Wrapper -->
+  <template x-if="modal.show">
+    <div class="modal-overlay" @click.self="modal.show = false">
+      <div class="modal-box p-5">
+
+        <!-- New Profile -->
+        <template x-if="modal.type === 'newProfile'">
+          <div>
+            <h3 class="font-bold text-lg mb-4">Nuevo perfil</h3>
+            <div class="space-y-3">
+              <div>
+                <label class="label">Nombre completo</label>
+                <input class="input" x-model="newProfileForm.name" placeholder="Ej: María González" />
+              </div>
+              <div>
+                <label class="label">Relación</label>
+                <select class="input" x-model="newProfileForm.relation">
+                  <option>Yo</option>
+                  <option>Hijo/a</option>
+                  <option>Pareja</option>
+                  <option>Padre/Madre</option>
+                  <option>Otro</option>
+                </select>
+              </div>
+              <div>
+                <label class="label">Fecha de nacimiento</label>
+                <input type="date" class="input" x-model="newProfileForm.birthdate" />
+              </div>
+              <div>
+                <label class="label">Emoji / Avatar</label>
+                <div class="flex gap-2 flex-wrap">
+                  <template x-for="e in ['👤','👨','👩','👦','👧','👴','👵','🧒','🧑']">
+                    <button class="text-2xl p-2 rounded-xl transition" :class="newProfileForm.emoji === e ? 'bg-sky-100 ring-2 ring-sky-400' : 'hover:bg-slate-100'" @click="newProfileForm.emoji = e" x-text="e"></button>
+                  </template>
+                </div>
+              </div>
+              <div>
+                <label class="label">Color</label>
+                <div class="flex gap-2">
+                  <template x-for="c in ['#0ea5e9','#8b5cf6','#10b981','#f59e0b','#ef4444','#ec4899','#14b8a6']">
+                    <button class="w-8 h-8 rounded-full transition ring-offset-2" :style="`background:${c}`" :class="newProfileForm.color === c ? 'ring-2 ring-sky-400' : ''" @click="newProfileForm.color = c"></button>
+                  </template>
+                </div>
+              </div>
+              <div class="flex gap-2 pt-2">
+                <button class="btn-secondary flex-1 justify-center" @click="modal.show = false">Cancelar</button>
+                <button class="btn-primary flex-1 justify-center" @click="saveNewProfile()">Crear perfil</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Examen Modal -->
+        <template x-if="modal.type === 'examen'">
+          <div>
+            <h3 class="font-bold text-lg mb-4">🔬 Nuevo examen</h3>
+            <div class="space-y-3">
+              <div><label class="label">Nombre del examen *</label><input class="input" x-model="form.title" placeholder="Ej: Hemograma, Radiografía, Revisión dental" /></div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="label">Tipo</label>
+                  <select class="input" x-model="form.subtype">
+                    <option>Sangre</option><option>Imagen</option><option>Dental</option><option>Orina</option><option>Biopsia</option><option>ECG</option><option>Otro</option>
+                  </select>
+                </div>
+                <div><label class="label">Fecha *</label><input type="date" class="input" x-model="form.date" /></div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Médico / Laboratorio</label><input class="input" x-model="form.lab" placeholder="Clínica Bupa, Lab X" /></div>
+                <div><label class="label">Resultado</label><input class="input" x-model="form.result" placeholder="Normal, 5.2 mmol/L..." /></div>
+              </div>
+              <div><label class="label">Notas</label><textarea class="input" rows="2" x-model="form.notes" placeholder="Observaciones adicionales..."></textarea></div>
+              <div>
+                <label class="label">Adjuntar archivo (PDF/imagen)</label>
+                <input type="file" class="input text-xs" @change="form.file = $event.target.files[0]" accept="image/*,.pdf" />
+              </div>
+              <div class="flex gap-2 pt-2">
+                <button class="btn-secondary flex-1 justify-center" @click="modal.show = false">Cancelar</button>
+                <button class="btn-primary flex-1 justify-center" @click="saveEntry('examen')">Guardar</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Medicamento Modal -->
+        <template x-if="modal.type === 'medicamento'">
+          <div>
+            <h3 class="font-bold text-lg mb-4">💊 Nuevo medicamento</h3>
+            <div class="space-y-3">
+              <div><label class="label">Nombre *</label><input class="input" x-model="form.name" placeholder="Ej: Ibuprofeno 400mg" /></div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Dosis</label><input class="input" x-model="form.dose" placeholder="400mg, 1 comprimido..." /></div>
+                <div>
+                  <label class="label">Frecuencia</label>
+                  <select class="input" x-model="form.frequency">
+                    <option>Diaria</option><option>Cada 8 horas</option><option>Cada 12 horas</option><option>Cada 2 días</option><option>Semanal</option><option>Según necesidad</option>
+                  </select>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Fecha inicio</label><input type="date" class="input" x-model="form.startDate" /></div>
+                <div><label class="label">Fecha fin (opcional)</label><input type="date" class="input" x-model="form.endDate" /></div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Stock (unidades)</label><input type="number" class="input" x-model="form.stock" placeholder="30" /></div>
+                <div><label class="label">Estado</label><select class="input" x-model="form.active"><option :value="true">Activo</option><option :value="false">Terminado</option></select></div>
+              </div>
+              <div><label class="label">Notas</label><textarea class="input" rows="2" x-model="form.notes" placeholder="Indicaciones especiales..."></textarea></div>
+              <div class="flex gap-2 pt-2">
+                <button class="btn-secondary flex-1 justify-center" @click="modal.show = false">Cancelar</button>
+                <button class="btn-primary flex-1 justify-center" @click="saveEntry('medicamento')">Guardar</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Consulta Modal -->
+        <template x-if="modal.type === 'consulta'">
+          <div>
+            <h3 class="font-bold text-lg mb-4">🏥 Nueva consulta</h3>
+            <div class="space-y-3">
+              <div><label class="label">Motivo / Título *</label><input class="input" x-model="form.title" placeholder="Ej: Control anual, Dolor de cabeza..." /></div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Médico</label><input class="input" x-model="form.doctor" placeholder="Dr. Rodríguez" /></div>
+                <div><label class="label">Especialidad</label><input class="input" x-model="form.specialty" placeholder="Médico general, Cardiólogo..." /></div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Fecha *</label><input type="date" class="input" x-model="form.date" /></div>
+                <div><label class="label">Centro médico</label><input class="input" x-model="form.hospital" placeholder="Clínica Alemana..." /></div>
+              </div>
+              <div><label class="label">Diagnóstico</label><input class="input" x-model="form.diagnosis" placeholder="Ej: Hipertensión, Gripe..." /></div>
+              <div><label class="label">Notas / Indicaciones</label><textarea class="input" rows="2" x-model="form.notes" placeholder="Indicaciones, próximos pasos..."></textarea></div>
+              <div>
+                <label class="label">Adjuntar documento</label>
+                <input type="file" class="input text-xs" @change="form.file = $event.target.files[0]" accept="image/*,.pdf" />
+              </div>
+              <div class="flex gap-2 pt-2">
+                <button class="btn-secondary flex-1 justify-center" @click="modal.show = false">Cancelar</button>
+                <button class="btn-primary flex-1 justify-center" @click="saveEntry('consulta')">Guardar</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Vacuna Modal -->
+        <template x-if="modal.type === 'vacuna'">
+          <div>
+            <h3 class="font-bold text-lg mb-4">💉 Nueva vacuna</h3>
+            <div class="space-y-3">
+              <div><label class="label">Nombre de la vacuna *</label><input class="input" x-model="form.name" placeholder="Ej: Influenza 2024, COVID-19 Bivalente..." /></div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Fecha *</label><input type="date" class="input" x-model="form.date" /></div>
+                <div><label class="label">Dosis número</label><input class="input" x-model="form.dose" placeholder="1, 2, Refuerzo..." /></div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Centro / Clínica</label><input class="input" x-model="form.center" placeholder="CESFAM, Clínica..." /></div>
+                <div><label class="label">Próxima dosis</label><input type="date" class="input" x-model="form.nextDate" /></div>
+              </div>
+              <div><label class="label">Notas</label><textarea class="input" rows="2" x-model="form.notes" placeholder="Reacciones, observaciones..."></textarea></div>
+              <div class="flex gap-2 pt-2">
+                <button class="btn-secondary flex-1 justify-center" @click="modal.show = false">Cancelar</button>
+                <button class="btn-primary flex-1 justify-center" @click="saveEntry('vacuna')">Guardar</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Alergia Modal -->
+        <template x-if="modal.type === 'alergia'">
+          <div>
+            <h3 class="font-bold text-lg mb-4">⚠️ Nueva alergia</h3>
+            <div class="space-y-3">
+              <div><label class="label">Alérgeno *</label><input class="input" x-model="form.name" placeholder="Ej: Penicilina, Polen, Mariscos..." /></div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="label">Severidad</label>
+                  <select class="input" x-model="form.severity"><option>Alta</option><option>Media</option><option>Baja</option></select>
+                </div>
+                <div><label class="label">Reacción</label><input class="input" x-model="form.reaction" placeholder="Urticaria, anafilaxia..." /></div>
+              </div>
+              <div><label class="label">Notas adicionales</label><textarea class="input" rows="2" x-model="form.notes"></textarea></div>
+              <div class="flex gap-2 pt-2">
+                <button class="btn-secondary flex-1 justify-center" @click="modal.show = false">Cancelar</button>
+                <button class="btn-primary flex-1 justify-center" @click="saveEntry('alergia')">Guardar</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Cirugía Modal -->
+        <template x-if="modal.type === 'cirugia'">
+          <div>
+            <h3 class="font-bold text-lg mb-4">🏨 Nueva cirugía</h3>
+            <div class="space-y-3">
+              <div><label class="label">Nombre de la cirugía *</label><input class="input" x-model="form.name" placeholder="Ej: Apendicectomía, Artroscopia..." /></div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Fecha *</label><input type="date" class="input" x-model="form.date" /></div>
+                <div><label class="label">Hospital</label><input class="input" x-model="form.hospital" placeholder="Clínica Santa María..." /></div>
+              </div>
+              <div><label class="label">Cirujano/a</label><input class="input" x-model="form.surgeon" placeholder="Dr. Pérez" /></div>
+              <div><label class="label">Notas y recuperación</label><textarea class="input" rows="2" x-model="form.notes" placeholder="Descripción, complicaciones, recuperación..."></textarea></div>
+              <div class="flex gap-2 pt-2">
+                <button class="btn-secondary flex-1 justify-center" @click="modal.show = false">Cancelar</button>
+                <button class="btn-primary flex-1 justify-center" @click="saveEntry('cirugia')">Guardar</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Medición Modal -->
+        <template x-if="modal.type === 'medicion'">
+          <div>
+            <h3 class="font-bold text-lg mb-4">📏 Nueva medición</h3>
+            <div class="space-y-3">
+              <div><label class="label">Fecha *</label><input type="date" class="input" x-model="form.date" /></div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Peso (kg)</label><input type="number" step="0.1" class="input" x-model="form.weight" placeholder="70.5" /></div>
+                <div><label class="label">Estatura (cm)</label><input type="number" class="input" x-model="form.height" placeholder="170" /></div>
+              </div>
+              <!-- Custom values for exam results -->
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Glucosa (mg/dL)</label><input type="number" class="input" x-model="form.glucose" placeholder="90" /></div>
+                <div><label class="label">Presión sistólica</label><input type="number" class="input" x-model="form.bpSys" placeholder="120" /></div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Presión diastólica</label><input type="number" class="input" x-model="form.bpDia" placeholder="80" /></div>
+                <div><label class="label">Colesterol (mg/dL)</label><input type="number" class="input" x-model="form.cholesterol" placeholder="190" /></div>
+              </div>
+              <div><label class="label">Notas</label><textarea class="input" rows="2" x-model="form.notes" placeholder="Observaciones..."></textarea></div>
+              <div class="flex gap-2 pt-2">
+                <button class="btn-secondary flex-1 justify-center" @click="modal.show = false">Cancelar</button>
+                <button class="btn-primary flex-1 justify-center" @click="saveEntry('medicion')">Guardar</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Reminder Modal -->
+        <template x-if="modal.type === 'reminder'">
+          <div>
+            <h3 class="font-bold text-lg mb-4">🗓️ Nuevo recordatorio</h3>
+            <div class="space-y-3">
+              <div><label class="label">Título *</label><input class="input" x-model="form.title" placeholder="Ej: Control anual, Mamografía..." /></div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Fecha *</label><input type="date" class="input" x-model="form.date" /></div>
+                <div>
+                  <label class="label">Tipo</label>
+                  <select class="input" x-model="form.subtype">
+                    <option>Control anual</option><option>Examen</option><option>Vacuna</option><option>Medicamento</option><option>Dental</option><option>Otro</option>
+                  </select>
+                </div>
+              </div>
+              <div><label class="label">Notas</label><textarea class="input" rows="2" x-model="form.notes"></textarea></div>
+              <div class="flex gap-2 pt-2">
+                <button class="btn-secondary flex-1 justify-center" @click="modal.show = false">Cancelar</button>
+                <button class="btn-primary flex-1 justify-center" @click="saveEntry('recordatorio')">Guardar</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Entry Detail -->
+        <template x-if="modal.type === 'detail' && modal.entry">
+          <div>
+            <div class="flex items-start justify-between mb-4">
+              <div>
+                <span class="chip border-slate-200 text-slate-600 mb-2 block w-fit" x-text="categoryLabel(modal.entry.category)"></span>
+                <h3 class="font-bold text-lg" x-text="modal.entry.title || modal.entry.name"></h3>
+                <p class="text-sm text-slate-500" x-text="formatDate(modal.entry.date?.toDate ? modal.entry.date.toDate() : new Date(modal.entry.date))"></p>
+              </div>
+              <button class="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl" @click="modal.show = false">✕</button>
+            </div>
+            <div class="space-y-3">
+              <template x-for="[k, v] in Object.entries(modal.entry).filter(([k]) => !['id','category','uid','profileId','createdAt'].includes(k) && v)" :key="k">
+                <div class="flex items-start gap-3 text-sm">
+                  <span class="text-slate-400 capitalize min-w-[100px]" x-text="translateKey(k)"></span>
+                  <span class="text-slate-700 dark:text-slate-300 flex-1" x-text="formatFieldValue(k, v)"></span>
+                </div>
+              </template>
+            </div>
+            <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+              <button class="btn-danger flex-1 justify-center" @click="deleteEntry(modal.entry); modal.show = false">Eliminar</button>
+              <button class="btn-secondary flex-1 justify-center" @click="modal.show = false">Cerrar</button>
+            </div>
+          </div>
+        </template>
+
+      </div>
+    </div>
+  </template>
+
+  <!-- ===================== JAVASCRIPT ===================== -->
+</body>
+</html>

@@ -1,0 +1,730 @@
+// MiHistorialMédico - app.js
+// Tailwind CDN reads this config before it starts.
+window.tailwind = window.tailwind || {};
+    window.tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            sky: { 50:'#f0f9ff',100:'#e0f2fe',200:'#bae6fd',300:'#7dd3fc',400:'#38bdf8',500:'#0ea5e9',600:'#0284c7',700:'#0369a1',800:'#075985',900:'#0c4a6e' },
+            medical: { light:'#f0f9ff', mid:'#bae6fd', accent:'#0ea5e9', dark:'#0369a1' }
+          },
+          fontFamily: {
+            sans: ['DM Sans', 'system-ui', 'sans-serif'],
+            mono: ['DM Mono', 'monospace'],
+          },
+          animation: {
+            'fade-in': 'fadeIn 0.3s ease-out',
+            'slide-up': 'slideUp 0.3s ease-out',
+            'pulse-soft': 'pulseSoft 2s infinite',
+          },
+          keyframes: {
+            fadeIn: { '0%': { opacity: 0 }, '100%': { opacity: 1 } },
+            slideUp: { '0%': { opacity: 0, transform: 'translateY(12px)' }, '100%': { opacity: 1, transform: 'translateY(0)' } },
+            pulseSoft: { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.6 } },
+          }
+        }
+      }
+    }
+
+// ============================================================
+    // FIREBASE CONFIGURATION
+    // Reemplaza estos valores con los de tu proyecto Firebase
+    // ============================================================
+    const FIREBASE_CONFIG = {
+      apiKey: "AIzaSyBKMfDz3XLJCmjjaYdeT_o1Z05T2yub_Qc",
+      authDomain: "lumen-6ed85.firebaseapp.com",
+      projectId: "lumen-6ed85",
+      storageBucket: "lumen-6ed85.firebasestorage.app",
+      messagingSenderId: "473887918286",
+      appId: "1:473887918286:web:e3ee5a38f52e9aa107e89f"
+    };
+    // ============================================================
+
+    // ---- Services are initialized lazily because this file is loaded before the CDN libraries ----
+    let localDB, db, auth, storage, isFirebaseReady = false, servicesInitialized = false;
+
+    function initServices() {
+      if (servicesInitialized) return;
+      servicesInitialized = true;
+
+      // IndexedDB offline fallback
+      if (window.Dexie) {
+        localDB = new Dexie('MiHistorialMedico');
+        localDB.version(1).stores({
+          entries: '++id, profileId, category, date',
+          profiles: '++id',
+          medTaken: '++id, medId, date',
+          documents: '++id, profileId, date'
+        });
+      }
+
+      // Firebase Init
+      try {
+        if (!window.firebase) throw new Error('Firebase SDK no disponible');
+        firebase.initializeApp(FIREBASE_CONFIG);
+        db = firebase.firestore();
+        auth = firebase.auth();
+        storage = firebase.storage();
+        isFirebaseReady = true;
+        db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+          if (err.code === 'failed-precondition' || err.code === 'unimplemented') {
+            console.warn('Firestore offline persistence unavailable:', err.code);
+          }
+        });
+      } catch(e) {
+        console.warn('Firebase no configurado. Usando modo local.', e);
+        const notice = document.getElementById('config-notice');
+        if (notice) notice.style.display = 'block';
+      }
+    }
+
+    // ---- Alpine App ----
+    function app() {
+      return {
+        // State
+        screen: 'login',
+        darkMode: localStorage.getItem('darkMode') === 'true' || window.matchMedia('(prefers-color-scheme: dark)').matches,
+        authLoading: false,
+        loginTab: 'login',
+        loginForm: { email: '', password: '' },
+        currentUser: null,
+        currentProfile: null,
+        profiles: [],
+        newProfileForm: { name: '', relation: 'Yo', birthdate: '', emoji: '👤', color: '#0ea5e9' },
+
+        // Section
+        activeSection: 'dashboard',
+        medTab: 'activos',
+        timelineFilter: '',
+        timelineStartDate: '',
+        uploading: false,
+
+        // Data
+        examenes: [],
+        medicamentos: [],
+        consultas: [],
+        vacunas: [],
+        alergias: [],
+        cirugias: [],
+        mediciones: [],
+        documents: [],
+        medTakenToday: [],
+        reminders: [],
+
+        // Modal
+        modal: { show: false, type: '', entry: null },
+        form: {},
+
+        // Toast
+        toast: { show: false, msg: '', type: 'success' },
+
+        // Charts
+        charts: {},
+
+        // Nav items
+        navItems: [
+          { id: 'dashboard', label: 'Inicio', icon: '🏠', badge: null },
+          { id: 'timeline', label: 'Timeline', icon: '🕐', badge: null },
+          { id: 'examenes', label: 'Exámenes', icon: '🔬', badge: null },
+          { id: 'medicamentos', label: 'Medicamentos', icon: '💊', badge: null },
+          { id: 'consultas', label: 'Consultas', icon: '🏥', badge: null },
+          { id: 'vacunas', label: 'Vacunas', icon: '💉', badge: null },
+          { id: 'alergias', label: 'Alergias', icon: '⚠️', badge: null },
+          { id: 'cirugias', label: 'Cirugías', icon: '🏨', badge: null },
+          { id: 'mediciones', label: 'Mediciones', icon: '📏', badge: null },
+          { id: 'documentos', label: 'Documentos', icon: '📎', badge: null },
+          { id: 'estadisticas', label: 'Estadísticas', icon: '📊', badge: null },
+        ],
+        mobileNavItems: [
+          { id: 'dashboard', label: 'Inicio', icon: '🏠' },
+          { id: 'examenes', label: 'Exámenes', icon: '🔬' },
+          { id: 'medicamentos', label: 'Medicamentos', icon: '💊' },
+          { id: 'consultas', label: 'Consultas', icon: '🏥' },
+          { id: 'estadisticas', label: 'Stats', icon: '📊' },
+        ],
+
+        // ---- INIT ----
+        init() {
+          initServices();
+          // Watch darkMode
+          this.$watch('darkMode', v => localStorage.setItem('darkMode', v));
+          this.$watch('activeSection', section => {
+            this.$nextTick(() => {
+              if (section === 'mediciones' || section === 'estadisticas') this.renderCharts();
+            });
+          });
+
+          if (!isFirebaseReady) {
+            this.screen = 'login';
+            return;
+          }
+
+          auth.onAuthStateChanged(user => {
+            if (user) {
+              this.currentUser = user;
+              this.loadProfiles();
+            } else {
+              this.screen = 'login';
+            }
+          });
+        },
+
+        // ---- AUTH ----
+        async doAuth() {
+          if (!isFirebaseReady) { this.showToast('Configura Firebase primero', 'error'); return; }
+          if (!this.loginForm.email || !this.loginForm.password) { this.showToast('Completa todos los campos', 'error'); return; }
+          this.authLoading = true;
+          try {
+            if (this.loginTab === 'login') {
+              await auth.signInWithEmailAndPassword(this.loginForm.email, this.loginForm.password);
+            } else {
+              await auth.createUserWithEmailAndPassword(this.loginForm.email, this.loginForm.password);
+            }
+          } catch(e) {
+            const msgs = {
+              'auth/user-not-found': 'Usuario no encontrado',
+              'auth/wrong-password': 'Contraseña incorrecta',
+              'auth/email-already-in-use': 'Email ya registrado',
+              'auth/weak-password': 'Contraseña muy débil (mín. 6 caracteres)',
+              'auth/invalid-email': 'Email inválido'
+            };
+            this.showToast(msgs[e.code] || e.message, 'error');
+          } finally {
+            this.authLoading = false;
+          }
+        },
+
+        async doLogout() {
+          if (isFirebaseReady) await auth.signOut();
+          this.currentUser = null;
+          this.currentProfile = null;
+          this.screen = 'login';
+        },
+
+        // ---- PROFILES ----
+        async loadProfiles() {
+          if (!this.currentUser) return;
+          if (isFirebaseReady) {
+            const snap = await db.collection('users').doc(this.currentUser.uid).collection('profiles').get();
+            this.profiles = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          } else {
+            this.profiles = await localDB.profiles.toArray();
+          }
+          this.screen = 'profiles';
+        },
+
+        nextProfile() {
+          if (!this.profiles || this.profiles.length === 0) return null;
+          const preferredNames = ['Santiago', 'Diego'];
+          const preferred = this.profiles.filter(p => preferredNames.includes((p.name || '').trim()));
+          const pool = preferred.length >= 2 ? preferred : this.profiles;
+          if (!this.currentProfile) return pool[0] || null;
+          return pool.find(p => p.id !== this.currentProfile.id) || pool[0] || null;
+        },
+
+        profileSwitchLabel() {
+          const next = this.nextProfile();
+          return next ? `Cambiar a ${next.name}` : 'Cambiar perfil';
+        },
+
+        profileSwitchTitle() {
+          const next = this.nextProfile();
+          return next ? `Cambiar al perfil de ${next.name}` : 'Volver a selección de perfiles';
+        },
+
+        async quickSwitchProfile() {
+          const next = this.nextProfile();
+          if (next && next.id !== this.currentProfile?.id) {
+            await this.selectProfile(next);
+            this.showToast(`Perfil activo: ${next.name} ✓`);
+          } else {
+            this.screen = 'profiles';
+          }
+        },
+
+        async selectProfile(p) {
+          this.currentProfile = p;
+          this.screen = 'app';
+          await this.loadAllData();
+        },
+
+        async saveNewProfile() {
+          if (!this.newProfileForm.name) { this.showToast('Nombre requerido', 'error'); return; }
+          const p = { ...this.newProfileForm, createdAt: new Date().toISOString() };
+          if (isFirebaseReady && this.currentUser) {
+            const ref = await db.collection('users').doc(this.currentUser.uid).collection('profiles').add(p);
+            p.id = ref.id;
+          } else {
+            p.id = Date.now().toString();
+            await localDB.profiles.add(p);
+          }
+          this.profiles.push(p);
+          this.modal.show = false;
+          this.newProfileForm = { name: '', relation: 'Yo', birthdate: '', emoji: '👤', color: '#0ea5e9' };
+          this.showToast('Perfil creado ✓');
+        },
+
+        // ---- LOAD DATA ----
+        async loadAllData() {
+          await Promise.all([
+            this.loadSection('examenes'),
+            this.loadSection('medicamentos'),
+            this.loadSection('consultas'),
+            this.loadSection('vacunas'),
+            this.loadSection('alergias'),
+            this.loadSection('cirugias'),
+            this.loadSection('mediciones'),
+            this.loadSection('documentos'),
+            this.loadSection('recordatorios'),
+            this.loadMedTakenToday(),
+          ]);
+        },
+
+        profilePath() {
+          return db.collection('users').doc(this.currentUser.uid).collection('profiles').doc(this.currentProfile.id);
+        },
+
+        async loadSection(section) {
+          if (!this.currentProfile) return;
+          let data = [];
+          if (isFirebaseReady && this.currentUser) {
+            const snap = await this.profilePath().collection(section).orderBy('date', 'desc').limit(200).get();
+            data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          } else {
+            data = await localDB.entries.where('profileId').equals(this.currentProfile.id).filter(e => e.category === section).reverse().sortBy('date');
+          }
+          const mapKey = {
+            examenes: 'examenes', medicamentos: 'medicamentos', consultas: 'consultas',
+            vacunas: 'vacunas', alergias: 'alergias', cirugias: 'cirugias',
+            mediciones: 'mediciones', documentos: 'documents', recordatorios: 'reminders'
+          };
+          this[mapKey[section]] = data;
+        },
+
+        async loadMedTakenToday() {
+          const today = new Date().toISOString().split('T')[0];
+          if (isFirebaseReady && this.currentUser && this.currentProfile) {
+            const snap = await this.profilePath().collection('medTaken').where('date', '==', today).get();
+            this.medTakenToday = snap.docs.map(d => d.data().medId);
+          } else {
+            const r = await localDB.medTaken.filter(m => m.date === today && m.profileId === this.currentProfile?.id).toArray();
+            this.medTakenToday = r.map(m => m.medId);
+          }
+        },
+
+        // ---- SAVE ENTRIES ----
+        async saveEntry(category) {
+          const f = { ...this.form, category, profileId: this.currentProfile.id };
+
+          // Validate required fields
+          const titleField = f.title || f.name;
+          if (!titleField) { this.showToast('Completa los campos obligatorios (*)', 'error'); return; }
+
+          // Handle file upload
+          if (f.file && isFirebaseReady) {
+            try {
+              const path = `users/${this.currentUser.uid}/${this.currentProfile.id}/${Date.now()}_${f.file.name}`;
+              const ref = storage.ref(path);
+              await ref.put(f.file);
+              f.fileUrl = await ref.getDownloadURL();
+              // Also save to documents collection
+              const docData = { name: f.file.name, url: f.fileUrl, type: f.file.type, date: f.date || new Date().toISOString().split('T')[0], profileId: this.currentProfile.id };
+              await this.profilePath().collection('documentos').add(docData);
+              this.documents.unshift({ id: Date.now().toString(), ...docData });
+            } catch(e) { console.warn('Upload failed', e); }
+          }
+          delete f.file;
+
+          // Build clean object
+          const clean = {};
+          for (const [k, v] of Object.entries(f)) {
+            if (v !== '' && v !== null && v !== undefined) clean[k] = v;
+          }
+          if (!clean.date) clean.date = new Date().toISOString().split('T')[0];
+
+          let id;
+          if (isFirebaseReady && this.currentUser) {
+            const ref = await this.profilePath().collection(category + 's').add({ ...clean, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+            id = ref.id;
+          } else {
+            id = Date.now().toString();
+            await localDB.entries.add({ ...clean, id });
+          }
+
+          clean.id = id;
+
+          // Update local state
+          const mapKey = {
+            examen: 'examenes', medicamento: 'medicamentos', consulta: 'consultas',
+            vacuna: 'vacunas', alergia: 'alergias', cirugia: 'cirugias',
+            medicion: 'mediciones', recordatorio: 'reminders'
+          };
+          if (mapKey[category]) this[mapKey[category]].unshift(clean);
+
+          this.form = {};
+          this.modal.show = false;
+          this.showToast('Guardado correctamente ✓');
+        },
+
+        async deleteEntry(entry) {
+          if (!confirm('¿Eliminar este registro?')) return;
+          const cat = entry.category;
+          if (isFirebaseReady && this.currentUser) {
+            await this.profilePath().collection(cat + 's').doc(entry.id).delete();
+          } else {
+            await localDB.entries.delete(entry.id);
+          }
+          const mapKey = {
+            examen: 'examenes', medicamento: 'medicamentos', consulta: 'consultas',
+            vacuna: 'vacunas', alergia: 'alergias', cirugia: 'cirugias',
+            medicion: 'mediciones', recordatorio: 'reminders'
+          };
+          if (mapKey[cat]) this[mapKey[cat]] = this[mapKey[cat]].filter(e => e.id !== entry.id);
+          this.showToast('Eliminado ✓');
+        },
+
+        // ---- MEDICAMENTOS TOMA ----
+        isTakenToday(medId) {
+          return this.medTakenToday.includes(medId);
+        },
+
+        async toggleMedTakenById(medId, name, dose) {
+          const today = new Date().toISOString().split('T')[0];
+          const already = this.isTakenToday(medId);
+          if (already) {
+            this.medTakenToday = this.medTakenToday.filter(id => id !== medId);
+            if (isFirebaseReady && this.currentUser) {
+              const snap = await this.profilePath().collection('medTaken').where('medId','==',medId).where('date','==',today).get();
+              snap.docs.forEach(d => d.ref.delete());
+            }
+          } else {
+            this.medTakenToday.push(medId);
+            const data = { medId, date: today, name, dose, profileId: this.currentProfile.id };
+            if (isFirebaseReady && this.currentUser) {
+              await this.profilePath().collection('medTaken').add(data);
+            } else {
+              await localDB.medTaken.add(data);
+            }
+          }
+        },
+
+        toggleMedTaken(med) { this.toggleMedTakenById(med.id, med.name, med.dose); },
+
+        // ---- FILE UPLOAD ----
+        async handleFileDrop(e) {
+          const files = Array.from(e.dataTransfer.files);
+          for (const f of files) await this.uploadDocument(f);
+        },
+
+        async handleFileInput(e) {
+          const files = Array.from(e.target.files);
+          for (const f of files) await this.uploadDocument(f);
+        },
+
+        async uploadDocument(file) {
+          this.uploading = true;
+          try {
+            let url = '#';
+            if (isFirebaseReady && this.currentUser) {
+              const path = `users/${this.currentUser.uid}/${this.currentProfile.id}/docs/${Date.now()}_${file.name}`;
+              const ref = storage.ref(path);
+              await ref.put(file);
+              url = await ref.getDownloadURL();
+            }
+            const doc = { name: file.name, url, type: file.type, date: new Date().toISOString().split('T')[0], profileId: this.currentProfile.id };
+            if (isFirebaseReady && this.currentUser) {
+              const ref = await this.profilePath().collection('documentos').add(doc);
+              doc.id = ref.id;
+            } else {
+              doc.id = Date.now().toString();
+              await localDB.documents.add(doc);
+            }
+            this.documents.unshift(doc);
+            this.showToast('Documento subido ✓');
+          } catch(e) { this.showToast('Error al subir archivo', 'error'); }
+          finally { this.uploading = false; }
+        },
+
+        // ---- CHARTS ----
+        renderCharts() {
+          this.$nextTick(() => {
+            this.renderWeightChart();
+            this.renderIMCChart();
+            this.renderExamTypeChart();
+            this.renderConsultasChart();
+          });
+        },
+
+        chartColors: ['#0ea5e9','#8b5cf6','#10b981','#f59e0b','#ef4444','#ec4899','#14b8a6'],
+
+        destroyChart(id) {
+          if (this.charts[id]) { this.charts[id].destroy(); delete this.charts[id]; }
+        },
+
+        renderWeightChart() {
+          const el = document.getElementById('weightChart');
+          if (!el || this.mediciones.length < 2) return;
+          this.destroyChart('weight');
+          const sorted = [...this.mediciones].reverse();
+          this.charts['weight'] = new Chart(el, {
+            type: 'line',
+            data: {
+              labels: sorted.map(m => this.formatDate(m.date?.toDate ? m.date.toDate() : new Date(m.date))),
+              datasets: [{ label: 'Peso (kg)', data: sorted.map(m => m.weight), borderColor: '#0ea5e9', backgroundColor: '#0ea5e920', tension: 0.4, fill: true, pointBackgroundColor: '#0ea5e9' }]
+            },
+            options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: false } } }
+          });
+        },
+
+        renderIMCChart() {
+          const el = document.getElementById('imcChart');
+          if (!el || this.mediciones.length < 2) return;
+          this.destroyChart('imc');
+          const sorted = [...this.mediciones].reverse();
+          this.charts['imc'] = new Chart(el, {
+            type: 'line',
+            data: {
+              labels: sorted.map(m => this.formatDate(m.date?.toDate ? m.date.toDate() : new Date(m.date))),
+              datasets: [{ label: 'IMC', data: sorted.map(m => this.calcIMC(m, true)), borderColor: '#8b5cf6', backgroundColor: '#8b5cf620', tension: 0.4, fill: true }]
+            },
+            options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: false } } }
+          });
+        },
+
+        renderExamTypeChart() {
+          const el = document.getElementById('examTypeChart');
+          if (!el || this.examenes.length === 0) return;
+          this.destroyChart('examType');
+          const types = {};
+          this.examenes.forEach(e => { types[e.subtype || 'Otro'] = (types[e.subtype || 'Otro'] || 0) + 1; });
+          this.charts['examType'] = new Chart(el, {
+            type: 'doughnut',
+            data: {
+              labels: Object.keys(types),
+              datasets: [{ data: Object.values(types), backgroundColor: this.chartColors }]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'right' } } }
+          });
+        },
+
+        renderConsultasChart() {
+          const el = document.getElementById('consultasChart');
+          if (!el || this.consultas.length === 0) return;
+          this.destroyChart('consultas');
+          const years = {};
+          this.consultas.forEach(c => {
+            const d = c.date?.toDate ? c.date.toDate() : new Date(c.date);
+            const y = d.getFullYear();
+            years[y] = (years[y] || 0) + 1;
+          });
+          const sorted = Object.keys(years).sort();
+          this.charts['consultas'] = new Chart(el, {
+            type: 'bar',
+            data: {
+              labels: sorted,
+              datasets: [{ label: 'Consultas', data: sorted.map(y => years[y]), backgroundColor: '#10b981aa', borderColor: '#10b981', borderWidth: 2, borderRadius: 8 }]
+            },
+            options: { responsive: true, plugins: { legend: { display: false } } }
+          });
+        },
+
+        // ---- COMPUTED HELPERS ----
+        get recentEntries() {
+          const all = [
+            ...this.examenes.map(e => ({ ...e, category: 'examen' })),
+            ...this.consultas.map(e => ({ ...e, category: 'consulta' })),
+            ...this.vacunas.map(e => ({ ...e, category: 'vacuna' })),
+            ...this.mediciones.map(e => ({ ...e, category: 'medicion' })),
+          ];
+          return all.sort((a, b) => {
+            const da = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+            const db2 = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+            return db2 - da;
+          });
+        },
+
+        get filteredTimeline() {
+          let all = this.recentEntries;
+          if (this.timelineFilter) all = all.filter(e => e.category === this.timelineFilter);
+          if (this.timelineStartDate) all = all.filter(e => {
+            const d = e.date?.toDate ? e.date.toDate() : new Date(e.date);
+            return d >= new Date(this.timelineStartDate);
+          });
+          return all;
+        },
+
+        get todayMeds() {
+          return this.medicamentos.filter(m => m.active).map(m => ({
+            ...m, taken: this.medTakenToday.includes(m.id)
+          }));
+        },
+
+        get upcomingReminders() {
+          const today = new Date();
+          return this.reminders.map(r => {
+            const d = r.date?.toDate ? r.date.toDate() : new Date(r.date);
+            const diff = Math.ceil((d - today) / (1000 * 60 * 60 * 24));
+            return { ...r, daysLeft: diff };
+          }).filter(r => r.daysLeft <= 90).sort((a, b) => a.daysLeft - b.daysLeft);
+        },
+
+        get dashboardStats() {
+          const year = new Date().getFullYear();
+          const thisYear = arr => arr.filter(e => {
+            const d = e.date?.toDate ? e.date.toDate() : new Date(e.date);
+            return d && d.getFullYear() === year;
+          }).length;
+          return [
+            { label: 'Exámenes ' + year, value: thisYear(this.examenes) },
+            { label: 'Consultas ' + year, value: thisYear(this.consultas) },
+            { label: 'Medicamentos activos', value: this.medicamentos.filter(m => m.active).length },
+            { label: 'Recordatorios pendientes', value: this.upcomingReminders.length },
+          ];
+        },
+
+        // ---- UTILS ----
+        getAge(birthdate) {
+          if (!birthdate) return '?';
+          const b = new Date(birthdate);
+          const today = new Date();
+          let age = today.getFullYear() - b.getFullYear();
+          const m = today.getMonth() - b.getMonth();
+          if (m < 0 || (m === 0 && today.getDate() < b.getDate())) age--;
+          return age;
+        },
+
+        formatDate(d) {
+          if (!d) return '—';
+          const date = d instanceof Date ? d : new Date(d);
+          if (isNaN(date)) return '—';
+          return date.toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' });
+        },
+
+        calcIMC(m, raw = false) {
+          if (!m?.weight || !m?.height) return raw ? null : '—';
+          const imc = m.weight / Math.pow(m.height / 100, 2);
+          return raw ? imc.toFixed(1) : imc.toFixed(1);
+        },
+
+        categoryLabel(cat) {
+          const labels = { examen: 'Examen', medicamento: 'Medicamento', consulta: 'Consulta', vacuna: 'Vacuna', alergia: 'Alergia', cirugia: 'Cirugía', medicion: 'Medición', recordatorio: 'Recordatorio' };
+          return labels[cat] || cat;
+        },
+
+        categoryColor(cat) {
+          const colors = { examen: '#0ea5e9', medicamento: '#f59e0b', consulta: '#10b981', vacuna: '#8b5cf6', alergia: '#ef4444', cirugia: '#ec4899', medicion: '#14b8a6', recordatorio: '#6366f1' };
+          return colors[cat] || '#94a3b8';
+        },
+
+        fileIcon(type) {
+          if (!type) return '📄';
+          if (type.includes('pdf')) return '📕';
+          if (type.includes('image')) return '🖼️';
+          if (type.includes('doc')) return '📝';
+          return '📄';
+        },
+
+        translateKey(k) {
+          const t = { title:'Título', name:'Nombre', date:'Fecha', notes:'Notas', result:'Resultado', lab:'Laboratorio', subtype:'Tipo', doctor:'Médico', specialty:'Especialidad', hospital:'Centro', diagnosis:'Diagnóstico', dose:'Dosis', frequency:'Frecuencia', startDate:'Inicio', endDate:'Fin', stock:'Stock', active:'Activo', severity:'Severidad', reaction:'Reacción', surgeon:'Cirujano', center:'Centro', nextDate:'Próxima dosis', weight:'Peso', height:'Estatura', glucose:'Glucosa', bpSys:'Presión Sist.', bpDia:'Presión Diast.', cholesterol:'Colesterol', fileUrl:'Archivo', category:'Categoría' };
+          return t[k] || k;
+        },
+
+        formatFieldValue(k, v) {
+          if (k === 'fileUrl') return 'Ver adjunto';
+          if (k === 'date' || k === 'startDate' || k === 'endDate' || k === 'nextDate') {
+            return this.formatDate(v?.toDate ? v.toDate() : new Date(v));
+          }
+          if (typeof v === 'boolean') return v ? 'Sí' : 'No';
+          return v;
+        },
+
+        // ---- MODALS ----
+        openModal(type) {
+          this.form = { date: new Date().toISOString().split('T')[0], active: true };
+          this.modal = { show: true, type, entry: null };
+        },
+
+        openEntryDetail(entry) {
+          this.modal = { show: true, type: 'detail', entry };
+        },
+
+        // ---- TOAST ----
+        showToast(msg, type = 'success') {
+          this.toast = { show: true, msg, type };
+          setTimeout(() => { this.toast.show = false; }, 3000);
+        },
+
+        // ---- EXPORT CSV ----
+        exportCSV() {
+          const all = [
+            ...this.examenes.map(e => ({ ...e, _section: 'Exámenes' })),
+            ...this.consultas.map(e => ({ ...e, _section: 'Consultas' })),
+            ...this.medicamentos.map(e => ({ ...e, _section: 'Medicamentos' })),
+            ...this.vacunas.map(e => ({ ...e, _section: 'Vacunas' })),
+            ...this.alergias.map(e => ({ ...e, _section: 'Alergias' })),
+            ...this.cirugias.map(e => ({ ...e, _section: 'Cirugías' })),
+            ...this.mediciones.map(e => ({ ...e, _section: 'Mediciones' })),
+          ];
+
+          if (all.length === 0) { this.showToast('Sin datos para exportar', 'error'); return; }
+
+          const headers = ['Sección','Perfil','Fecha','Título/Nombre','Tipo','Doctor','Hospital','Resultado','Diagnóstico','Dosis','Frecuencia','Notas'];
+          const rows = all.map(e => [
+            e._section, this.currentProfile?.name || '',
+            this.formatDate(e.date?.toDate ? e.date.toDate() : new Date(e.date)),
+            e.title || e.name || '', e.subtype || e.category || '',
+            e.doctor || '', e.hospital || '', e.result || '', e.diagnosis || '',
+            e.dose || '', e.frequency || '', e.notes || ''
+          ]);
+
+          const csv = [headers, ...rows].map(r => r.map(c => `"${String(c || '').replace(/"/g, '""')}"`).join(',')).join('\n');
+          const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = `historial_${this.currentProfile?.name?.replace(/\s/g,'_') || 'medico'}_${new Date().toISOString().split('T')[0]}.csv`;
+          a.click();
+          this.showToast('CSV exportado ✓');
+        },
+      };
+    }
+
+    // ---- SERVICE WORKER + PWA MANIFEST ----
+    function registerServiceWorker() {
+      if (!('serviceWorker' in navigator)) return;
+      window.addEventListener('load', () => {
+        const swCode = `
+const CACHE = 'mihm-v1-split';
+const ASSETS = ['./', './index.html', './styles.css', './app.js'];
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).catch(() => undefined)));
+});
+self.addEventListener('fetch', e => {
+  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+});
+        `;
+        const blob = new Blob([swCode], { type: 'application/javascript' });
+        const url = URL.createObjectURL(blob);
+        navigator.serviceWorker.register(url).catch(e => console.warn('SW:', e));
+      });
+    }
+
+    function setupManifest() {
+      const manifestLink = document.getElementById('manifest-link');
+      if (!manifestLink) return;
+      const manifest = {
+        name: 'MiHistorialMédico',
+        short_name: 'MiHistorial',
+        description: 'Tu historial médico de por vida',
+        start_url: './index.html',
+        display: 'standalone',
+        theme_color: '#0ea5e9',
+        background_color: '#f0f9ff',
+        icons: [{ src: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="%230ea5e9"/><path d="M30 20h40a5 5 0 015 5v50a5 5 0 01-5 5H30a5 5 0 01-5-5V25a5 5 0 015-5zm15 5v10H35v5h10v10h5V40h10v-5H50V25h-5z" fill="white"/></svg>', sizes: '192x192', type: 'image/svg+xml' }]
+      };
+      const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+      manifestLink.href = URL.createObjectURL(manifestBlob);
+    }
+
+    registerServiceWorker();
+    document.addEventListener('DOMContentLoaded', setupManifest);
