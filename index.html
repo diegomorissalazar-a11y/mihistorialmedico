@@ -225,6 +225,25 @@
             </template>
           </div>
 
+          <!-- Cuadro próximo control -->
+          <div class="card border-sky-200 dark:border-sky-800 bg-gradient-to-br from-sky-50 to-white dark:from-sky-900/30 dark:to-slate-800" x-show="nextControlReminder">
+            <div class="flex items-start gap-4">
+              <div class="w-12 h-12 rounded-2xl bg-sky-100 dark:bg-sky-900/60 flex items-center justify-center text-2xl flex-shrink-0" x-text="nextControlReminder?.icon || '🏥'"></div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2 mb-1">
+                  <h3 class="font-semibold text-sky-900 dark:text-sky-100">Próximo control</h3>
+                  <span class="badge" :class="statusBadgeClass(nextControlReminder?.daysLeft)" x-text="nextControlReminder?.daysLeft === 0 ? 'Hoy' : (nextControlReminder?.daysLeft < 0 ? Math.abs(nextControlReminder?.daysLeft) + 'd vencido' : nextControlReminder?.daysLeft + 'd')"></span>
+                </div>
+                <p class="text-lg font-bold text-slate-800 dark:text-white" x-text="nextControlReminderText"></p>
+                <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                  <span x-text="nextControlReminder?.title"></span>
+                  <span> · </span>
+                  <span x-text="formatDate(nextControlReminder?.dueDate)"></span>
+                </p>
+              </div>
+            </div>
+          </div>
+
           <!-- Medicamentos hoy -->
           <div class="card" x-show="todayMeds.length > 0">
             <div class="flex items-center justify-between mb-3">
@@ -628,6 +647,10 @@
                       </div>
                       <span class="text-xs text-slate-400 flex-shrink-0" x-text="formatDate(c.date?.toDate ? c.date.toDate() : new Date(c.date))"></span>
                     </div>
+                    <div x-show="c.nextControlDate" class="mt-2 text-xs bg-sky-50 dark:bg-sky-900/20 rounded-lg px-3 py-2 text-sky-800 dark:text-sky-300 flex items-center justify-between gap-2">
+                      <span x-text="'Próximo control: ' + formatDate(c.nextControlDate?.toDate ? c.nextControlDate.toDate() : new Date(c.nextControlDate))"></span>
+                      <span class="badge" :class="statusBadgeClass(daysUntil(c.nextControlDate))" x-text="statusForDays(daysUntil(c.nextControlDate)).label"></span>
+                    </div>
                     <div x-show="c.diagnosis" class="mt-2 text-xs bg-emerald-50 dark:bg-emerald-900/20 rounded-lg px-3 py-2 text-emerald-800 dark:text-emerald-300" x-text="'Diagnóstico: ' + c.diagnosis"></div>
                     <div x-show="c.notes" class="mt-1 text-xs text-slate-500 line-clamp-2" x-text="c.notes"></div>
                   </div>
@@ -962,7 +985,10 @@
               </div>
               <div class="grid grid-cols-2 gap-3">
                 <div><label class="label">Fecha inicio</label><input type="date" class="input" x-model="form.startDate" /></div>
-                <div><label class="label">Fecha fin (opcional)</label><input type="date" class="input" x-model="form.endDate" /></div>
+                <div><label class="label">Duración del tratamiento (días)</label><input type="number" min="1" class="input" x-model="form.durationDays" placeholder="Ej: 10" /></div>
+              </div>
+              <div class="text-xs text-slate-500 bg-slate-50 dark:bg-slate-700 rounded-xl px-3 py-2" x-show="form.startDate && form.durationDays">
+                Fin estimado: <strong x-text="formatDate(estimatedEndDate(form.startDate, form.durationDays))"></strong>
               </div>
               <div class="grid grid-cols-2 gap-3">
                 <div><label class="label">Stock (unidades)</label><input type="number" class="input" x-model="form.stock" placeholder="30" /></div>
@@ -982,14 +1008,45 @@
           <div>
             <h3 class="font-bold text-lg mb-4">🏥 Nueva consulta</h3>
             <div class="space-y-3">
+              <div>
+                <label class="label">Tipo de control / consulta</label>
+                <select class="input" x-model="form.visitType" @change="applyVisitTypeDefaults()">
+                  <option>Consulta general</option>
+                  <option>Control pediátrico</option>
+                  <option>Control nutricionista</option>
+                  <option>Chequeo completo</option>
+                  <option>Control anual</option>
+                  <option>Otro</option>
+                </select>
+              </div>
               <div><label class="label">Motivo / Título *</label><input class="input" x-model="form.title" placeholder="Ej: Control anual, Dolor de cabeza..." /></div>
               <div class="grid grid-cols-2 gap-3">
-                <div><label class="label">Médico</label><input class="input" x-model="form.doctor" placeholder="Dr. Rodríguez" /></div>
-                <div><label class="label">Especialidad</label><input class="input" x-model="form.specialty" placeholder="Médico general, Cardiólogo..." /></div>
+                <div>
+                  <label class="label">Médico</label>
+                  <select class="input" x-model="form.doctorSelect" @change="applyDoctorSelection()">
+                    <option value="">Seleccionar médico guardado</option>
+                    <template x-for="d in savedDoctors" :key="d"><option :value="d" x-text="d"></option></template>
+                    <option value="__otro">Otro médico...</option>
+                  </select>
+                  <input x-show="form.doctorOther || !savedDoctors.length" class="input mt-2" x-model="form.doctor" placeholder="Dr/a. Apellido" />
+                </div>
+                <div><label class="label">Especialidad</label><input class="input" x-model="form.specialty" placeholder="Médico general, Pediatría, Nutrición..." /></div>
               </div>
               <div class="grid grid-cols-2 gap-3">
-                <div><label class="label">Fecha *</label><input type="date" class="input" x-model="form.date" /></div>
-                <div><label class="label">Centro médico</label><input class="input" x-model="form.hospital" placeholder="Clínica Alemana..." /></div>
+                <div><label class="label">Fecha del control *</label><input type="date" class="input" x-model="form.date" /></div>
+                <div><label class="label">Fecha próximo control</label><input type="date" class="input" x-model="form.nextControlDate" /></div>
+              </div>
+              <div><label class="label">Centro médico</label><input class="input" x-model="form.hospital" placeholder="Clínica Alemana..." /></div>
+              <div class="rounded-2xl border border-slate-200 dark:border-slate-700 p-3 space-y-3 bg-slate-50 dark:bg-slate-800/60">
+                <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Datos estadísticos opcionales</div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div><label class="label">Peso (kg)</label><input type="number" step="0.1" class="input" x-model="form.weight" placeholder="Ej: 18.5" /></div>
+                  <div><label class="label">Talla / Estatura (cm)</label><input type="number" step="0.1" class="input" x-model="form.height" placeholder="Ej: 105" /></div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div><label class="label">Perímetro cefálico (cm)</label><input type="number" step="0.1" class="input" x-model="form.headCircumference" placeholder="Opcional pediatría" /></div>
+                  <div class="text-xs text-slate-500 flex items-end pb-2">IMC: <strong class="ml-1" x-text="calcIMC(form)"></strong></div>
+                </div>
               </div>
               <div><label class="label">Diagnóstico</label><input class="input" x-model="form.diagnosis" placeholder="Ej: Hipertensión, Gripe..." /></div>
               <div><label class="label">Notas / Indicaciones</label><textarea class="input" rows="2" x-model="form.notes" placeholder="Indicaciones, próximos pasos..."></textarea></div>
@@ -1134,14 +1191,22 @@
               </div>
               <div class="grid grid-cols-2 gap-3">
                 <div><label class="label">Hora inicial</label><input type="time" class="input" x-model="form.startTime" /></div>
-                <div><label class="label">Duración días</label><input type="number" class="input" x-model="form.durationDays" placeholder="7" /></div>
+                <div><label class="label">Duración del tratamiento (días)</label><input type="number" min="1" class="input" x-model="form.durationDays" placeholder="7, 10, 14" /></div>
               </div>
               <div class="grid grid-cols-2 gap-3">
                 <div><label class="label">Inicio</label><input type="date" class="input" x-model="form.startDate" /></div>
                 <div><label class="label">Fin estimado</label><input type="date" class="input" x-model="form.endDate" /></div>
               </div>
               <div class="grid grid-cols-2 gap-3">
-                <div><label class="label">Médico</label><input class="input" x-model="form.doctor" placeholder="Dr/a." /></div>
+                <div>
+                  <label class="label">Médico</label>
+                  <select class="input" x-model="form.doctorSelect" @change="applyDoctorSelection()">
+                    <option value="">Seleccionar médico guardado</option>
+                    <template x-for="d in savedDoctors" :key="d"><option :value="d" x-text="d"></option></template>
+                    <option value="__otro">Otro médico...</option>
+                  </select>
+                  <input x-show="form.doctorOther || !savedDoctors.length" class="input mt-2" x-model="form.doctor" placeholder="Dr/a." />
+                </div>
                 <div><label class="label">Vence receta</label><input type="date" class="input" x-model="form.expirationDate" /></div>
               </div>
               <div><label class="label">Notas</label><textarea class="input" rows="2" x-model="form.notes" placeholder="Indicaciones, efectos, receta retenida, etc."></textarea></div>
@@ -1151,7 +1216,7 @@
               </div>
               <div class="flex gap-2 pt-2">
                 <button class="btn-secondary flex-1 justify-center" @click="modal.show = false">Cancelar</button>
-                <button class="btn-primary flex-1 justify-center" @click="if(!form.endDate && form.startDate && form.durationDays){ const d = new Date(form.startDate); d.setDate(d.getDate()+Number(form.durationDays)); form.endDate=d.toISOString().split('T')[0]; } form.active = true; saveEntry('receta')">Guardar</button>
+                <button class="btn-primary flex-1 justify-center" @click="if(!form.endDate && form.startDate && form.durationDays){ form.endDate = estimatedEndDate(form.startDate, form.durationDays); } form.active = true; saveEntry('receta')">Guardar</button>
               </div>
             </div>
           </div>

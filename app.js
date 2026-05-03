@@ -346,6 +346,51 @@ window.tailwind = window.tailwind || {};
           return mapKey[category];
         },
 
+
+
+        get savedDoctors() {
+          const names = [
+            ...this.consultas.map(x => x.doctor),
+            ...this.controles.map(x => x.doctor),
+            ...this.recetas.map(x => x.doctor)
+          ].filter(Boolean).map(x => String(x).trim()).filter(Boolean);
+          return [...new Set(names)].sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+        },
+
+        applyDoctorSelection() {
+          if (this.form.doctorSelect === '__otro') {
+            this.form.doctor = '';
+            this.form.doctorOther = true;
+          } else {
+            this.form.doctor = this.form.doctorSelect || '';
+            this.form.doctorOther = false;
+          }
+        },
+
+        applyVisitTypeDefaults() {
+          const type = this.form.visitType || '';
+          if (type === 'Control pediátrico') {
+            this.form.specialty = 'Pediatría';
+            if (!this.form.title) this.form.title = 'Control pediátrico';
+          }
+          if (type === 'Control nutricionista') {
+            this.form.specialty = 'Nutrición / Nutricionista';
+            if (!this.form.title) this.form.title = 'Control nutricionista';
+          }
+          if (type === 'Chequeo completo') {
+            this.form.specialty = 'Medicina general';
+            if (!this.form.title) this.form.title = 'Chequeo completo';
+          }
+        },
+
+        estimatedEndDate(startDate, durationDays) {
+          if (!startDate || !durationDays) return '';
+          const d = new Date(startDate);
+          if (isNaN(d)) return '';
+          d.setDate(d.getDate() + Number(durationDays));
+          return d.toISOString().split('T')[0];
+        },
+
         // ---- SAVE ENTRIES ----
         async saveEntry(category) {
           const f = { ...this.form, category, profileId: this.currentProfile.id };
@@ -368,6 +413,11 @@ window.tailwind = window.tailwind || {};
             } catch(e) { console.warn('Upload failed', e); }
           }
           delete f.file;
+          if ((category === 'medicamento' || category === 'receta') && !f.endDate && f.startDate && f.durationDays) {
+            f.endDate = this.estimatedEndDate(f.startDate, f.durationDays);
+          }
+          delete f.doctorSelect;
+          delete f.doctorOther;
 
           // Build clean object
           const clean = {};
@@ -390,6 +440,32 @@ window.tailwind = window.tailwind || {};
           // Update local state
           const stateKey = this.stateKeyFor(category);
           if (stateKey) this[stateKey].unshift(clean);
+
+          if (category === 'consulta' && (clean.weight || clean.height || clean.glucose || clean.bpSys || clean.bpDia || clean.cholesterol)) {
+            const meas = {
+              category: 'medicion',
+              profileId: this.currentProfile.id,
+              date: clean.date,
+              title: 'Medición asociada a consulta',
+              weight: clean.weight || '',
+              height: clean.height || '',
+              glucose: clean.glucose || '',
+              bpSys: clean.bpSys || '',
+              bpDia: clean.bpDia || '',
+              cholesterol: clean.cholesterol || '',
+              notes: `Registro automático desde ${clean.visitType || clean.title || 'consulta'}`,
+              sourceConsultaId: id
+            };
+            let measId;
+            if (isFirebaseReady && this.currentUser) {
+              const mref = await this.profilePath().collection('mediciones').add({ ...meas, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+              measId = mref.id;
+            } else {
+              measId = Date.now().toString() + '_med';
+              await localDB.entries.add({ ...meas, id: measId });
+            }
+            this.mediciones.unshift({ ...meas, id: measId });
+          }
 
           this.form = {};
           this.modal.show = false;
@@ -482,13 +558,16 @@ window.tailwind = window.tailwind || {};
           const controls = this.controles.map(c => ({
             ...c, source: 'control', icon: c.icon || '🩺', title: c.title || c.name || 'Control preventivo', dueDate: c.nextDate || this.calcNextDate(c.lastDate || c.date, c.frequencyMonths)
           }));
+          const consultasProgramadas = this.consultas.filter(c => c.nextControlDate).map(c => ({
+            ...c, source: 'consulta', icon: c.visitType === 'Control pediátrico' ? '👶' : c.visitType === 'Control nutricionista' ? '🥗' : '🏥', title: c.title || c.visitType || 'Próximo control', dueDate: c.nextControlDate
+          }));
           const vaccines = this.vacunas.filter(v => v.nextDate).map(v => ({
             ...v, source: 'vacuna', icon: '💉', title: v.name || 'Vacuna', dueDate: v.nextDate
           }));
           const recipes = this.recetas.filter(r => r.active !== false).map(r => ({
             ...r, source: 'receta', icon: '🧾', title: r.name || 'Receta', dueDate: r.expirationDate || r.endDate
           })).filter(r => r.dueDate);
-          return [...controls, ...vaccines, ...recipes].map(e => {
+          return [...controls, ...consultasProgramadas, ...vaccines, ...recipes].map(e => {
             const days = this.daysUntil(e.dueDate);
             return { ...e, daysLeft: days, status: this.statusForDays(days) };
           }).sort((a,b) => (a.daysLeft ?? 99999) - (b.daysLeft ?? 99999));
@@ -752,13 +831,42 @@ window.tailwind = window.tailwind || {};
           }));
         },
 
+        get nextControlReminder() {
+          const controles = this.calendarEvents
+            .filter(e => ['consulta', 'control'].includes(e.source) && e.dueDate && e.daysLeft !== null && e.daysLeft !== undefined)
+            .sort((a, b) => a.daysLeft - b.daysLeft);
+          return controles[0] || null;
+        },
+
+        get nextControlReminderText() {
+          const e = this.nextControlReminder;
+          if (!e) return '';
+          if (e.daysLeft < 0) return `Tu próximo control está vencido hace ${Math.abs(e.daysLeft)} días`;
+          if (e.daysLeft === 0) return 'Tu próximo control es hoy';
+          if (e.daysLeft === 1) return 'Falta 1 día para tu próximo control';
+          return `Faltan ${e.daysLeft} días para tu próximo control`;
+        },
+
         get upcomingReminders() {
-          const today = new Date();
-          return this.reminders.map(r => {
-            const d = r.date?.toDate ? r.date.toDate() : new Date(r.date);
-            const diff = Math.ceil((d - today) / (1000 * 60 * 60 * 24));
-            return { ...r, daysLeft: diff };
-          }).filter(r => r.daysLeft <= 90).sort((a, b) => a.daysLeft - b.daysLeft);
+          const manual = this.reminders.map(r => {
+            const days = this.daysUntil(r.date);
+            return { ...r, daysLeft: days, icon: '📅', source: 'recordatorio' };
+          });
+
+          const controles = this.calendarEvents
+            .filter(e => ['consulta', 'control'].includes(e.source) && e.dueDate)
+            .map(e => ({
+              ...e,
+              id: `control-${e.source}-${e.id}`,
+              title: `Próximo control: ${e.title}`,
+              date: e.dueDate,
+              icon: e.icon || '🏥',
+              source: 'control'
+            }));
+
+          return [...manual, ...controles]
+            .filter(r => r.daysLeft !== null && r.daysLeft !== undefined && r.daysLeft <= 90)
+            .sort((a, b) => a.daysLeft - b.daysLeft);
         },
 
         get dashboardStats() {
@@ -818,13 +926,13 @@ window.tailwind = window.tailwind || {};
         },
 
         translateKey(k) {
-          const t = { title:'Título', name:'Nombre', date:'Fecha', notes:'Notas', result:'Resultado', lab:'Laboratorio', subtype:'Tipo', doctor:'Médico', specialty:'Especialidad', hospital:'Centro', diagnosis:'Diagnóstico', dose:'Dosis', frequency:'Frecuencia', startDate:'Inicio', endDate:'Fin', stock:'Stock', active:'Activo', severity:'Severidad', reaction:'Reacción', surgeon:'Cirujano', center:'Centro', nextDate:'Próxima dosis', weight:'Peso', height:'Estatura', glucose:'Glucosa', bpSys:'Presión Sist.', bpDia:'Presión Diast.', cholesterol:'Colesterol', fileUrl:'Archivo', category:'Categoría', lastDate:'Último control', nextDate:'Próxima fecha', frequencyMonths:'Frecuencia meses', expirationDate:'Vence receta', startTime:'Hora inicial', frequencyHours:'Cada horas', durationDays:'Duración días', endRealDate:'Término real', endReason:'Motivo término', scheduledTime:'Hora programada', loggedAt:'Hora registro', status:'Estado' };
+          const t = { title:'Título', name:'Nombre', date:'Fecha', notes:'Notas', result:'Resultado', lab:'Laboratorio', subtype:'Tipo', doctor:'Médico', specialty:'Especialidad', hospital:'Centro', diagnosis:'Diagnóstico', dose:'Dosis', frequency:'Frecuencia', startDate:'Inicio', endDate:'Fin estimado', durationDays:'Duración del tratamiento (días)', visitType:'Tipo de control', stock:'Stock', active:'Activo', severity:'Severidad', reaction:'Reacción', surgeon:'Cirujano', center:'Centro', nextDate:'Próxima fecha', nextControlDate:'Fecha próximo control', weight:'Peso', height:'Estatura', glucose:'Glucosa', bpSys:'Presión Sist.', bpDia:'Presión Diast.', cholesterol:'Colesterol', headCircumference:'Perímetro cefálico', fileUrl:'Archivo', category:'Categoría', lastDate:'Último control', frequencyMonths:'Frecuencia meses', expirationDate:'Vence receta', startTime:'Hora inicial', frequencyHours:'Cada horas', endRealDate:'Término real', endReason:'Motivo término', scheduledTime:'Hora programada', loggedAt:'Hora registro', status:'Estado' };
           return t[k] || k;
         },
 
         formatFieldValue(k, v) {
           if (k === 'fileUrl') return 'Ver adjunto';
-          if (k === 'date' || k === 'startDate' || k === 'endDate' || k === 'nextDate') {
+          if (k === 'date' || k === 'startDate' || k === 'endDate' || k === 'nextDate' || k === 'nextControlDate') {
             return this.formatDate(v?.toDate ? v.toDate() : new Date(v));
           }
           if (typeof v === 'boolean') return v ? 'Sí' : 'No';
@@ -835,6 +943,8 @@ window.tailwind = window.tailwind || {};
         openModal(type) {
           const today = new Date().toISOString().split('T')[0];
           this.form = { date: today, active: true };
+          if (type === 'consulta') this.form = { date: today, visitType: 'Consulta general', title: '', doctorSelect: '', doctorOther: false, doctor: '', specialty: '', active: true };
+          if (type === 'medicamento') this.form = { name: '', dose: '', frequency: 'Diaria', startDate: today, durationDays: 10, stock: '', active: true };
           if (type === 'control') this.form = { title: '', lastDate: today, frequencyMonths: 12, icon: '🩺', active: true };
           if (type === 'receta') this.form = { name: '', dose: '', frequencyHours: 12, startTime: '08:00', durationDays: 7, startDate: today, endDate: '', expirationDate: '', active: true };
           this.modal = { show: true, type, entry: null };
