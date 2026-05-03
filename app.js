@@ -96,6 +96,7 @@ window.tailwind = window.tailwind || {};
         // Section
         activeSection: 'dashboard',
         medTab: 'activos',
+        calendarTab: 'controles',
         timelineFilter: '',
         timelineStartDate: '',
         uploading: false,
@@ -111,6 +112,10 @@ window.tailwind = window.tailwind || {};
         documents: [],
         medTakenToday: [],
         reminders: [],
+        controles: [],
+        recetas: [],
+        compras: [],
+        treatmentLogs: [],
 
         // Modal
         modal: { show: false, type: '', entry: null },
@@ -130,6 +135,8 @@ window.tailwind = window.tailwind || {};
           { id: 'medicamentos', label: 'Medicamentos', icon: '💊', badge: null },
           { id: 'consultas', label: 'Consultas', icon: '🏥', badge: null },
           { id: 'vacunas', label: 'Vacunas', icon: '💉', badge: null },
+          { id: 'calendario', label: 'Calendario', icon: '📅', badge: null },
+          { id: 'recetas', label: 'Recetas', icon: '🧾', badge: null },
           { id: 'alergias', label: 'Alergias', icon: '⚠️', badge: null },
           { id: 'cirugias', label: 'Cirugías', icon: '🏨', badge: null },
           { id: 'mediciones', label: 'Mediciones', icon: '📏', badge: null },
@@ -139,7 +146,8 @@ window.tailwind = window.tailwind || {};
         mobileNavItems: [
           { id: 'dashboard', label: 'Inicio', icon: '🏠' },
           { id: 'examenes', label: 'Exámenes', icon: '🔬' },
-          { id: 'medicamentos', label: 'Medicamentos', icon: '💊' },
+          { id: 'medicamentos', label: 'Meds', icon: '💊' },
+          { id: 'calendario', label: 'Agenda', icon: '📅' },
           { id: 'consultas', label: 'Consultas', icon: '🏥' },
           { id: 'estadisticas', label: 'Stats', icon: '📊' },
         ],
@@ -277,6 +285,10 @@ window.tailwind = window.tailwind || {};
             this.loadSection('mediciones'),
             this.loadSection('documentos'),
             this.loadSection('recordatorios'),
+            this.loadSection('controles'),
+            this.loadSection('recetas'),
+            this.loadSection('compras'),
+            this.loadSection('tomas'),
             this.loadMedTakenToday(),
           ]);
         },
@@ -292,12 +304,14 @@ window.tailwind = window.tailwind || {};
             const snap = await this.profilePath().collection(section).orderBy('date', 'desc').limit(200).get();
             data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
           } else {
-            data = await localDB.entries.where('profileId').equals(this.currentProfile.id).filter(e => e.category === section).reverse().sortBy('date');
+            const sectionCategory = { examenes:'examen', medicamentos:'medicamento', consultas:'consulta', vacunas:'vacuna', alergias:'alergia', cirugias:'cirugia', mediciones:'medicion', recordatorios:'recordatorio', controles:'control', recetas:'receta', compras:'compra', tomas:'toma' }[section] || section;
+            data = await localDB.entries.where('profileId').equals(this.currentProfile.id).filter(e => e.category === sectionCategory).reverse().sortBy('date');
           }
           const mapKey = {
             examenes: 'examenes', medicamentos: 'medicamentos', consultas: 'consultas',
             vacunas: 'vacunas', alergias: 'alergias', cirugias: 'cirugias',
-            mediciones: 'mediciones', documentos: 'documents', recordatorios: 'reminders'
+            mediciones: 'mediciones', documentos: 'documents', recordatorios: 'reminders',
+            controles: 'controles', recetas: 'recetas', compras: 'compras', tomas: 'treatmentLogs'
           };
           this[mapKey[section]] = data;
         },
@@ -311,6 +325,25 @@ window.tailwind = window.tailwind || {};
             const r = await localDB.medTaken.filter(m => m.date === today && m.profileId === this.currentProfile?.id).toArray();
             this.medTakenToday = r.map(m => m.medId);
           }
+        },
+
+
+        collectionFor(category) {
+          const plural = {
+            examen: 'examenes', medicamento: 'medicamentos', consulta: 'consultas', vacuna: 'vacunas',
+            alergia: 'alergias', cirugia: 'cirugias', medicion: 'mediciones', recordatorio: 'recordatorios',
+            control: 'controles', receta: 'recetas', compra: 'compras', toma: 'tomas'
+          };
+          return plural[category] || category;
+        },
+
+        stateKeyFor(category) {
+          const mapKey = {
+            examen: 'examenes', medicamento: 'medicamentos', consulta: 'consultas', vacuna: 'vacunas',
+            alergia: 'alergias', cirugia: 'cirugias', medicion: 'mediciones', recordatorio: 'reminders',
+            control: 'controles', receta: 'recetas', compra: 'compras', toma: 'treatmentLogs'
+          };
+          return mapKey[category];
         },
 
         // ---- SAVE ENTRIES ----
@@ -345,7 +378,7 @@ window.tailwind = window.tailwind || {};
 
           let id;
           if (isFirebaseReady && this.currentUser) {
-            const ref = await this.profilePath().collection(category + 's').add({ ...clean, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+            const ref = await this.profilePath().collection(this.collectionFor(category)).add({ ...clean, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
             id = ref.id;
           } else {
             id = Date.now().toString();
@@ -355,12 +388,8 @@ window.tailwind = window.tailwind || {};
           clean.id = id;
 
           // Update local state
-          const mapKey = {
-            examen: 'examenes', medicamento: 'medicamentos', consulta: 'consultas',
-            vacuna: 'vacunas', alergia: 'alergias', cirugia: 'cirugias',
-            medicion: 'mediciones', recordatorio: 'reminders'
-          };
-          if (mapKey[category]) this[mapKey[category]].unshift(clean);
+          const stateKey = this.stateKeyFor(category);
+          if (stateKey) this[stateKey].unshift(clean);
 
           this.form = {};
           this.modal.show = false;
@@ -371,16 +400,12 @@ window.tailwind = window.tailwind || {};
           if (!confirm('¿Eliminar este registro?')) return;
           const cat = entry.category;
           if (isFirebaseReady && this.currentUser) {
-            await this.profilePath().collection(cat + 's').doc(entry.id).delete();
+            await this.profilePath().collection(this.collectionFor(cat)).doc(entry.id).delete();
           } else {
             await localDB.entries.delete(entry.id);
           }
-          const mapKey = {
-            examen: 'examenes', medicamento: 'medicamentos', consulta: 'consultas',
-            vacuna: 'vacunas', alergia: 'alergias', cirugia: 'cirugias',
-            medicion: 'mediciones', recordatorio: 'reminders'
-          };
-          if (mapKey[cat]) this[mapKey[cat]] = this[mapKey[cat]].filter(e => e.id !== entry.id);
+          const stateKey = this.stateKeyFor(cat);
+          if (stateKey) this[stateKey] = this[stateKey].filter(e => e.id !== entry.id);
           this.showToast('Eliminado ✓');
         },
 
@@ -410,6 +435,173 @@ window.tailwind = window.tailwind || {};
         },
 
         toggleMedTaken(med) { this.toggleMedTakenById(med.id, med.name, med.dose); },
+
+
+        // ---- PLAN, VACUNAS Y RECETAS ----
+        daysUntil(value) {
+          if (!value) return null;
+          const target = value?.toDate ? value.toDate() : new Date(value);
+          if (isNaN(target)) return null;
+          const today = new Date();
+          today.setHours(0,0,0,0);
+          target.setHours(0,0,0,0);
+          return Math.ceil((target - today) / (1000 * 60 * 60 * 24));
+        },
+
+        statusForDays(days) {
+          if (days === null || days === undefined || isNaN(days)) return { label: 'Sin fecha', tone: 'slate', icon: '⚪' };
+          if (days < 0) return { label: `Vencido hace ${Math.abs(days)} días`, tone: 'red', icon: '🔴' };
+          if (days === 0) return { label: 'Hoy', tone: 'sky', icon: '🔵' };
+          if (days <= 30) return { label: `Próximo: faltan ${days} días`, tone: 'amber', icon: '🟡' };
+          return { label: `Al día: faltan ${days} días`, tone: 'green', icon: '✅' };
+        },
+
+        statusBadgeClass(days) {
+          if (days === null || days === undefined || isNaN(days)) return 'bg-slate-100 text-slate-600';
+          if (days < 0) return 'bg-red-100 text-red-700';
+          if (days === 0) return 'bg-sky-100 text-sky-700';
+          if (days <= 30) return 'bg-amber-100 text-amber-700';
+          return 'bg-green-100 text-green-700';
+        },
+
+        addMonths(dateValue, months) {
+          const d = dateValue ? new Date(dateValue) : new Date();
+          if (isNaN(d)) return '';
+          const day = d.getDate();
+          d.setMonth(d.getMonth() + Number(months || 0));
+          if (d.getDate() < day) d.setDate(0);
+          return d.toISOString().split('T')[0];
+        },
+
+        calcNextDate(dateValue, frequencyMonths) {
+          if (!dateValue || !frequencyMonths) return '';
+          return this.addMonths(dateValue, Number(frequencyMonths));
+        },
+
+        get calendarEvents() {
+          const controls = this.controles.map(c => ({
+            ...c, source: 'control', icon: c.icon || '🩺', title: c.title || c.name || 'Control preventivo', dueDate: c.nextDate || this.calcNextDate(c.lastDate || c.date, c.frequencyMonths)
+          }));
+          const vaccines = this.vacunas.filter(v => v.nextDate).map(v => ({
+            ...v, source: 'vacuna', icon: '💉', title: v.name || 'Vacuna', dueDate: v.nextDate
+          }));
+          const recipes = this.recetas.filter(r => r.active !== false).map(r => ({
+            ...r, source: 'receta', icon: '🧾', title: r.name || 'Receta', dueDate: r.expirationDate || r.endDate
+          })).filter(r => r.dueDate);
+          return [...controls, ...vaccines, ...recipes].map(e => {
+            const days = this.daysUntil(e.dueDate);
+            return { ...e, daysLeft: days, status: this.statusForDays(days) };
+          }).sort((a,b) => (a.daysLeft ?? 99999) - (b.daysLeft ?? 99999));
+        },
+
+        get upcomingCalendarEvents() {
+          return this.calendarEvents.filter(e => e.daysLeft === null || e.daysLeft <= 90).slice(0, 8);
+        },
+
+        get activeRecipes() {
+          return this.recetas.filter(r => r.active !== false).sort((a,b) => (this.daysUntil(a.endDate || a.expirationDate) ?? 9999) - (this.daysUntil(b.endDate || b.expirationDate) ?? 9999));
+        },
+
+        get finishedRecipes() {
+          return this.recetas.filter(r => r.active === false);
+        },
+
+        doseTimesForRecipe(recipe) {
+          const every = Number(recipe.frequencyHours || recipe.everyHours || 24);
+          const start = recipe.startTime || '08:00';
+          const [hh, mm] = start.split(':').map(Number);
+          const times = [];
+          if (!every || every <= 0) return [start];
+          for (let m = hh * 60 + (mm || 0); m < 24 * 60; m += every * 60) {
+            const h = String(Math.floor(m / 60)).padStart(2, '0');
+            const mi = String(m % 60).padStart(2, '0');
+            times.push(`${h}:${mi}`);
+          }
+          return times.length ? times : [start];
+        },
+
+        isRecipeActiveToday(recipe) {
+          if (recipe.active === false) return false;
+          const today = new Date(); today.setHours(0,0,0,0);
+          const start = recipe.startDate ? new Date(recipe.startDate) : null;
+          if (start && !isNaN(start)) { start.setHours(0,0,0,0); if (today < start) return false; }
+          const end = recipe.endDate ? new Date(recipe.endDate) : null;
+          if (end && !isNaN(end)) { end.setHours(23,59,59,999); if (today > end) return false; }
+          return true;
+        },
+
+        doseKey(recipeId, date, time) { return `${recipeId}|${date}|${time}`; },
+
+        doseLog(recipeId, date, time) {
+          const key = this.doseKey(recipeId, date, time);
+          return this.treatmentLogs.find(t => t.doseKey === key);
+        },
+
+        get todayDoses() {
+          const today = new Date().toISOString().split('T')[0];
+          return this.activeRecipes.filter(r => this.isRecipeActiveToday(r)).flatMap(r =>
+            this.doseTimesForRecipe(r).map(time => {
+              const log = this.doseLog(r.id, today, time);
+              return { recipe: r, recipeId: r.id, time, date: today, doseKey: this.doseKey(r.id, today, time), status: log?.status || 'pendiente', loggedAt: log?.loggedAt || null, logId: log?.id || null };
+            })
+          ).sort((a,b) => a.time.localeCompare(b.time));
+        },
+
+        async logDose(dose, status = 'tomada') {
+          const data = {
+            category: 'toma', profileId: this.currentProfile.id, recipeId: dose.recipeId, recipeName: dose.recipe.name,
+            dose: dose.recipe.dose || '', date: dose.date, scheduledTime: dose.time, doseKey: dose.doseKey,
+            status, loggedAt: new Date().toISOString()
+          };
+          const existing = this.doseLog(dose.recipeId, dose.date, dose.time);
+          if (isFirebaseReady && this.currentUser) {
+            if (existing?.id) await this.profilePath().collection('tomas').doc(existing.id).set(data, { merge: true });
+            else {
+              const ref = await this.profilePath().collection('tomas').add({ ...data, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+              data.id = ref.id;
+            }
+          } else {
+            if (existing?.id) await localDB.entries.update(existing.id, data);
+            else { data.id = Date.now().toString() + Math.random().toString(16).slice(2); await localDB.entries.add(data); }
+          }
+          if (existing?.id) this.treatmentLogs = this.treatmentLogs.map(t => t.id === existing.id ? { ...t, ...data, id: existing.id } : t);
+          else this.treatmentLogs.unshift(data);
+          this.showToast(status === 'tomada' ? 'Toma registrada ✓' : 'Toma omitida registrada');
+        },
+
+        recipeAdherence(recipe) {
+          const logs = this.treatmentLogs.filter(t => t.recipeId === recipe.id);
+          const taken = logs.filter(t => t.status === 'tomada').length;
+          const omitted = logs.filter(t => t.status === 'omitida').length;
+          const total = taken + omitted;
+          const pct = total ? Math.round((taken / total) * 100) : 0;
+          return { taken, omitted, total, pct };
+        },
+
+        async endRecipe(recipe) {
+          const reason = prompt('Motivo de término', 'Tratamiento completo');
+          if (reason === null) return;
+          const adherence = this.recipeAdherence(recipe);
+          const patch = { active: false, endRealDate: new Date().toISOString().split('T')[0], endReason: reason, adherencePct: adherence.pct };
+          if (isFirebaseReady && this.currentUser) {
+            await this.profilePath().collection('recetas').doc(recipe.id).set(patch, { merge: true });
+          } else {
+            await localDB.entries.update(recipe.id, patch);
+          }
+          this.recetas = this.recetas.map(r => r.id === recipe.id ? { ...r, ...patch } : r);
+          this.showToast('Tratamiento finalizado y registrado ✓');
+        },
+
+        openQuickControl(type) {
+          const templates = {
+            oftalmologo: { title: 'Oftalmólogo', icon: '👁️', frequencyMonths: 12 },
+            dentista: { title: 'Dentista', icon: '🦷', frequencyMonths: 6 },
+            chequeo: { title: 'Chequeo completo', icon: '🩺', frequencyMonths: 12 },
+            sangre: { title: 'Exámenes de sangre', icon: '🧪', frequencyMonths: 12 },
+          };
+          this.openModal('control');
+          this.form = { ...this.form, ...(templates[type] || {}) };
+        },
 
         // ---- FILE UPLOAD ----
         async handleFileDrop(e) {
@@ -579,7 +771,7 @@ window.tailwind = window.tailwind || {};
             { label: 'Exámenes ' + year, value: thisYear(this.examenes) },
             { label: 'Consultas ' + year, value: thisYear(this.consultas) },
             { label: 'Medicamentos activos', value: this.medicamentos.filter(m => m.active).length },
-            { label: 'Recordatorios pendientes', value: this.upcomingReminders.length },
+            { label: 'Alertas próximas', value: this.upcomingCalendarEvents.length + this.upcomingReminders.length },
           ];
         },
 
@@ -608,7 +800,7 @@ window.tailwind = window.tailwind || {};
         },
 
         categoryLabel(cat) {
-          const labels = { examen: 'Examen', medicamento: 'Medicamento', consulta: 'Consulta', vacuna: 'Vacuna', alergia: 'Alergia', cirugia: 'Cirugía', medicion: 'Medición', recordatorio: 'Recordatorio' };
+          const labels = { examen: 'Examen', medicamento: 'Medicamento', consulta: 'Consulta', vacuna: 'Vacuna', alergia: 'Alergia', cirugia: 'Cirugía', medicion: 'Medición', recordatorio: 'Recordatorio', control: 'Control preventivo', receta: 'Receta', compra: 'Compra', toma: 'Toma' };
           return labels[cat] || cat;
         },
 
@@ -626,7 +818,7 @@ window.tailwind = window.tailwind || {};
         },
 
         translateKey(k) {
-          const t = { title:'Título', name:'Nombre', date:'Fecha', notes:'Notas', result:'Resultado', lab:'Laboratorio', subtype:'Tipo', doctor:'Médico', specialty:'Especialidad', hospital:'Centro', diagnosis:'Diagnóstico', dose:'Dosis', frequency:'Frecuencia', startDate:'Inicio', endDate:'Fin', stock:'Stock', active:'Activo', severity:'Severidad', reaction:'Reacción', surgeon:'Cirujano', center:'Centro', nextDate:'Próxima dosis', weight:'Peso', height:'Estatura', glucose:'Glucosa', bpSys:'Presión Sist.', bpDia:'Presión Diast.', cholesterol:'Colesterol', fileUrl:'Archivo', category:'Categoría' };
+          const t = { title:'Título', name:'Nombre', date:'Fecha', notes:'Notas', result:'Resultado', lab:'Laboratorio', subtype:'Tipo', doctor:'Médico', specialty:'Especialidad', hospital:'Centro', diagnosis:'Diagnóstico', dose:'Dosis', frequency:'Frecuencia', startDate:'Inicio', endDate:'Fin', stock:'Stock', active:'Activo', severity:'Severidad', reaction:'Reacción', surgeon:'Cirujano', center:'Centro', nextDate:'Próxima dosis', weight:'Peso', height:'Estatura', glucose:'Glucosa', bpSys:'Presión Sist.', bpDia:'Presión Diast.', cholesterol:'Colesterol', fileUrl:'Archivo', category:'Categoría', lastDate:'Último control', nextDate:'Próxima fecha', frequencyMonths:'Frecuencia meses', expirationDate:'Vence receta', startTime:'Hora inicial', frequencyHours:'Cada horas', durationDays:'Duración días', endRealDate:'Término real', endReason:'Motivo término', scheduledTime:'Hora programada', loggedAt:'Hora registro', status:'Estado' };
           return t[k] || k;
         },
 
@@ -641,7 +833,10 @@ window.tailwind = window.tailwind || {};
 
         // ---- MODALS ----
         openModal(type) {
-          this.form = { date: new Date().toISOString().split('T')[0], active: true };
+          const today = new Date().toISOString().split('T')[0];
+          this.form = { date: today, active: true };
+          if (type === 'control') this.form = { title: '', lastDate: today, frequencyMonths: 12, icon: '🩺', active: true };
+          if (type === 'receta') this.form = { name: '', dose: '', frequencyHours: 12, startTime: '08:00', durationDays: 7, startDate: today, endDate: '', expirationDate: '', active: true };
           this.modal = { show: true, type, entry: null };
         },
 

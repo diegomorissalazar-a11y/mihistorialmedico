@@ -264,6 +264,53 @@
             </div>
           </div>
 
+
+          <!-- Próximos controles, vacunas y recetas -->
+          <div class="card" x-show="upcomingCalendarEvents.length > 0">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold flex items-center gap-2">📅 Próximos controles y vacunas</h3>
+              <button class="text-xs text-sky-500 hover:text-sky-600" @click="activeSection='calendario'">Ver agenda</button>
+            </div>
+            <div class="space-y-2">
+              <template x-for="e in upcomingCalendarEvents" :key="e.source + '-' + e.id">
+                <div class="flex items-center gap-3 p-3 rounded-xl" :class="e.daysLeft < 0 ? 'bg-red-50 dark:bg-red-900/20' : e.daysLeft <= 30 ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-sky-50 dark:bg-sky-900/20'">
+                  <div class="text-xl" x-text="e.icon"></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm font-medium truncate" x-text="e.title"></div>
+                    <div class="text-xs text-slate-500" x-text="formatDate(e.dueDate) + ' · ' + e.status.label"></div>
+                  </div>
+                  <span class="badge" :class="statusBadgeClass(e.daysLeft)" x-text="e.daysLeft === 0 ? 'Hoy' : (e.daysLeft < 0 ? Math.abs(e.daysLeft) + 'd vencido' : e.daysLeft + 'd')"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Tomas programadas por receta -->
+          <div class="card" x-show="todayDoses.length > 0">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold flex items-center gap-2">💊 Tomas programadas hoy</h3>
+              <button class="text-xs text-sky-500 hover:text-sky-600" @click="activeSection='recetas'">Ver recetas</button>
+            </div>
+            <div class="space-y-2">
+              <template x-for="d in todayDoses" :key="d.doseKey">
+                <div class="flex items-center gap-3 p-3 rounded-xl" :class="d.status === 'tomada' ? 'bg-green-50 dark:bg-green-900/20' : d.status === 'omitida' ? 'bg-red-50 dark:bg-red-900/20' : 'bg-amber-50 dark:bg-amber-900/20'">
+                  <div class="w-11 h-11 rounded-xl bg-white/70 dark:bg-slate-800/60 flex flex-col items-center justify-center flex-shrink-0 border border-slate-100 dark:border-slate-700">
+                    <span class="text-[11px] font-bold" x-text="d.time"></span>
+                    <span class="text-sm">⏰</span>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm font-semibold truncate" x-text="d.recipe.name"></div>
+                    <div class="text-xs text-slate-500" x-text="(d.recipe.dose || '') + ' · cada ' + (d.recipe.frequencyHours || 24) + ' horas'"></div>
+                  </div>
+                  <div class="flex gap-1.5">
+                    <button class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-green-100 text-green-700 disabled:opacity-50" :disabled="d.status === 'tomada'" @click="logDose(d, 'tomada')">Tomada</button>
+                    <button class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-100 text-red-700 disabled:opacity-50" :disabled="d.status === 'omitida'" @click="logDose(d, 'omitida')">Omitir</button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- Últimas entradas -->
           <div class="card">
             <div class="flex items-center justify-between mb-3">
@@ -413,6 +460,150 @@
             </template>
             <div x-show="medicamentos.filter(m => medTab === 'activos' ? m.active : !m.active).length === 0" class="card text-center py-10 text-slate-400">
               <span x-text="medTab === 'activos' ? 'Sin medicamentos activos.' : 'Sin historial de medicamentos.'"></span>
+            </div>
+          </div>
+        </div>
+
+
+        <!-- ===== CALENDARIO PREVENTIVO ===== -->
+        <div x-show="activeSection === 'calendario'" class="animate-fade-in space-y-4">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h2 class="text-lg font-bold">📅 Calendario preventivo</h2>
+              <p class="text-xs text-slate-500">Controles anuales, vacunas, recetas y días faltantes del perfil activo.</p>
+            </div>
+            <button class="btn-primary" @click="openModal('control')">+ Control</button>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <button class="btn-secondary justify-center" @click="openQuickControl('oftalmologo')">👁️ Oftalmólogo</button>
+            <button class="btn-secondary justify-center" @click="openQuickControl('dentista')">🦷 Dentista</button>
+            <button class="btn-secondary justify-center" @click="openQuickControl('chequeo')">🩺 Chequeo</button>
+            <button class="btn-secondary justify-center" @click="openQuickControl('sangre')">🧪 Sangre</button>
+          </div>
+
+          <div class="flex rounded-xl bg-slate-100 dark:bg-slate-700 p-1">
+            <button class="flex-1 py-2 rounded-lg text-sm font-semibold transition-all" :class="calendarTab === 'controles' ? 'bg-white dark:bg-slate-600 shadow text-sky-600 dark:text-sky-400' : 'text-slate-500'" @click="calendarTab='controles'">Controles</button>
+            <button class="flex-1 py-2 rounded-lg text-sm font-semibold transition-all" :class="calendarTab === 'vacunas' ? 'bg-white dark:bg-slate-600 shadow text-sky-600 dark:text-sky-400' : 'text-slate-500'" @click="calendarTab='vacunas'">Vacunas</button>
+            <button class="flex-1 py-2 rounded-lg text-sm font-semibold transition-all" :class="calendarTab === 'todo' ? 'bg-white dark:bg-slate-600 shadow text-sky-600 dark:text-sky-400' : 'text-slate-500'" @click="calendarTab='todo'">Todo</button>
+          </div>
+
+          <div class="space-y-3" x-show="calendarTab === 'controles'">
+            <template x-for="c in controles" :key="c.id">
+              <div class="card">
+                <div class="flex items-start gap-3">
+                  <div class="w-11 h-11 rounded-xl bg-sky-100 dark:bg-sky-900/40 flex items-center justify-center text-xl flex-shrink-0" x-text="c.icon || '🩺'"></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="font-semibold text-sm" x-text="c.title || c.name"></div>
+                    <div class="text-xs text-slate-500 mt-0.5" x-text="'Último: ' + formatDate(c.lastDate || c.date) + ' · Próximo: ' + formatDate(c.nextDate || calcNextDate(c.lastDate || c.date, c.frequencyMonths))"></div>
+                    <div class="text-xs text-slate-400 mt-1" x-text="'Frecuencia: cada ' + (c.frequencyMonths || 12) + ' meses'"></div>
+                  </div>
+                  <span class="badge flex-shrink-0" :class="statusBadgeClass(daysUntil(c.nextDate || calcNextDate(c.lastDate || c.date, c.frequencyMonths)))" x-text="statusForDays(daysUntil(c.nextDate || calcNextDate(c.lastDate || c.date, c.frequencyMonths))).label"></span>
+                  <button class="text-slate-300 hover:text-red-400" @click="deleteEntry(c)">✕</button>
+                </div>
+              </div>
+            </template>
+            <div x-show="controles.length === 0" class="card text-center py-10 text-slate-400">Sin controles preventivos. Agrega dentista, oftalmólogo o chequeo anual.</div>
+          </div>
+
+          <div class="space-y-3" x-show="calendarTab === 'vacunas'">
+            <template x-for="v in vacunas" :key="v.id">
+              <div class="card flex items-center gap-3">
+                <div class="w-11 h-11 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-xl flex-shrink-0">💉</div>
+                <div class="flex-1 min-w-0">
+                  <div class="font-semibold text-sm" x-text="v.name"></div>
+                  <div class="text-xs text-slate-500" x-text="'Aplicada: ' + formatDate(v.date) + (v.nextDate ? ' · Próxima: ' + formatDate(v.nextDate) : ' · Sin próxima dosis')"></div>
+                </div>
+                <span x-show="v.nextDate" class="badge" :class="statusBadgeClass(daysUntil(v.nextDate))" x-text="statusForDays(daysUntil(v.nextDate)).label"></span>
+              </div>
+            </template>
+            <div x-show="vacunas.length === 0" class="card text-center py-10 text-slate-400">Sin vacunas registradas.</div>
+          </div>
+
+          <div class="space-y-3" x-show="calendarTab === 'todo'">
+            <template x-for="e in calendarEvents" :key="e.source + '-' + e.id">
+              <div class="card flex items-center gap-3">
+                <div class="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-xl flex-shrink-0" x-text="e.icon"></div>
+                <div class="flex-1 min-w-0">
+                  <div class="font-semibold text-sm" x-text="e.title"></div>
+                  <div class="text-xs text-slate-500" x-text="formatDate(e.dueDate) + ' · ' + categoryLabel(e.source)"></div>
+                </div>
+                <span class="badge" :class="statusBadgeClass(e.daysLeft)" x-text="e.status.label"></span>
+              </div>
+            </template>
+            <div x-show="calendarEvents.length === 0" class="card text-center py-10 text-slate-400">Sin eventos en calendario.</div>
+          </div>
+        </div>
+
+        <!-- ===== RECETAS Y TRATAMIENTOS ===== -->
+        <div x-show="activeSection === 'recetas'" class="animate-fade-in space-y-4">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h2 class="text-lg font-bold">🧾 Recetas y tomas</h2>
+              <p class="text-xs text-slate-500">Controla recetas activas, tomas cada 12/24 horas y cierre del tratamiento.</p>
+            </div>
+            <button class="btn-primary" @click="openModal('receta')">+ Receta</button>
+          </div>
+
+          <div class="card" x-show="todayDoses.length > 0">
+            <h3 class="font-semibold mb-3">💊 Tomas de hoy</h3>
+            <div class="space-y-2">
+              <template x-for="d in todayDoses" :key="d.doseKey">
+                <div class="flex items-center gap-3 p-3 rounded-xl" :class="d.status === 'tomada' ? 'bg-green-50 dark:bg-green-900/20' : d.status === 'omitida' ? 'bg-red-50 dark:bg-red-900/20' : 'bg-amber-50 dark:bg-amber-900/20'">
+                  <div class="w-12 h-12 rounded-xl bg-white dark:bg-slate-800 flex items-center justify-center font-bold text-xs border border-slate-100 dark:border-slate-700" x-text="d.time"></div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm font-semibold" x-text="d.recipe.name"></div>
+                    <div class="text-xs text-slate-500" x-text="(d.recipe.dose || '') + ' · Estado: ' + d.status"></div>
+                  </div>
+                  <button class="px-3 py-2 rounded-xl text-xs font-semibold bg-green-100 text-green-700" @click="logDose(d, 'tomada')">Tomada</button>
+                  <button class="px-3 py-2 rounded-xl text-xs font-semibold bg-red-100 text-red-700" @click="logDose(d, 'omitida')">Omitida</button>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <div class="space-y-3">
+            <template x-for="r in activeRecipes" :key="r.id">
+              <div class="card">
+                <div class="flex items-start gap-3">
+                  <div class="w-11 h-11 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-xl flex-shrink-0">🧾</div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between gap-2">
+                      <div>
+                        <div class="font-semibold" x-text="r.name"></div>
+                        <div class="text-xs text-slate-500 mt-0.5" x-text="(r.dose || '') + ' · cada ' + (r.frequencyHours || 24) + ' horas · desde ' + (r.startTime || '08:00')"></div>
+                      </div>
+                      <span class="badge bg-green-100 text-green-700">Activo</span>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 text-xs">
+                      <div class="bg-slate-50 dark:bg-slate-700 rounded-xl p-2"><span class="text-slate-400">Inicio</span><br><b x-text="formatDate(r.startDate)"></b></div>
+                      <div class="bg-slate-50 dark:bg-slate-700 rounded-xl p-2"><span class="text-slate-400">Fin estimado</span><br><b x-text="formatDate(r.endDate)"></b></div>
+                      <div class="bg-slate-50 dark:bg-slate-700 rounded-xl p-2"><span class="text-slate-400">Vence receta</span><br><b x-text="formatDate(r.expirationDate)"></b></div>
+                      <div class="bg-slate-50 dark:bg-slate-700 rounded-xl p-2"><span class="text-slate-400">Adherencia</span><br><b x-text="recipeAdherence(r).pct + '%'"></b></div>
+                    </div>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                      <button class="btn-secondary" @click="openEntryDetail(r)">Ver historial</button>
+                      <button class="btn-danger" @click="endRecipe(r)">Acabar toma</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <div x-show="activeRecipes.length === 0" class="card text-center py-10 text-slate-400">Sin recetas activas.</div>
+          </div>
+
+          <div class="card" x-show="finishedRecipes.length > 0">
+            <h3 class="font-semibold mb-3">Historial de tratamientos finalizados</h3>
+            <div class="space-y-2">
+              <template x-for="r in finishedRecipes" :key="r.id">
+                <div class="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-700 rounded-xl">
+                  <div class="text-xl">✅</div>
+                  <div class="flex-1">
+                    <div class="text-sm font-semibold" x-text="r.name"></div>
+                    <div class="text-xs text-slate-500" x-text="'Finalizado: ' + formatDate(r.endRealDate) + ' · Adherencia: ' + (r.adherencePct || recipeAdherence(r).pct) + '%'"></div>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
         </div>
@@ -907,6 +1098,65 @@
           </div>
         </template>
 
+
+        <!-- Control Preventivo Modal -->
+        <template x-if="modal.type === 'control'">
+          <div>
+            <h3 class="font-bold text-lg mb-4">📅 Nuevo control preventivo</h3>
+            <div class="space-y-3">
+              <div><label class="label">Control *</label><input class="input" x-model="form.title" placeholder="Ej: Dentista, Oftalmólogo, Chequeo completo" /></div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Última fecha realizada</label><input type="date" class="input" x-model="form.lastDate" /></div>
+                <div><label class="label">Próxima fecha</label><input type="date" class="input" x-model="form.nextDate" :value="form.nextDate || calcNextDate(form.lastDate, form.frequencyMonths)" @input="form.nextDate = $event.target.value" /></div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Frecuencia en meses</label><input type="number" class="input" x-model="form.frequencyMonths" placeholder="6, 12" /></div>
+                <div><label class="label">Icono</label><input class="input" x-model="form.icon" placeholder="🦷 👁️ 🩺" /></div>
+              </div>
+              <div><label class="label">Notas</label><textarea class="input" rows="2" x-model="form.notes" placeholder="Ej: pedir hora con anticipación, centro médico, etc."></textarea></div>
+              <div class="flex gap-2 pt-2">
+                <button class="btn-secondary flex-1 justify-center" @click="modal.show = false">Cancelar</button>
+                <button class="btn-primary flex-1 justify-center" @click="if(!form.nextDate && form.lastDate && form.frequencyMonths) form.nextDate = calcNextDate(form.lastDate, form.frequencyMonths); saveEntry('control')">Guardar</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Receta / Tratamiento Modal -->
+        <template x-if="modal.type === 'receta'">
+          <div>
+            <h3 class="font-bold text-lg mb-4">🧾 Nueva receta / tratamiento</h3>
+            <div class="space-y-3">
+              <div><label class="label">Medicamento *</label><input class="input" x-model="form.name" placeholder="Ej: Amoxicilina 500mg" /></div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Dosis</label><input class="input" x-model="form.dose" placeholder="1 comprimido" /></div>
+                <div><label class="label">Cada cuántas horas</label><input type="number" class="input" x-model="form.frequencyHours" placeholder="12" /></div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Hora inicial</label><input type="time" class="input" x-model="form.startTime" /></div>
+                <div><label class="label">Duración días</label><input type="number" class="input" x-model="form.durationDays" placeholder="7" /></div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Inicio</label><input type="date" class="input" x-model="form.startDate" /></div>
+                <div><label class="label">Fin estimado</label><input type="date" class="input" x-model="form.endDate" /></div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div><label class="label">Médico</label><input class="input" x-model="form.doctor" placeholder="Dr/a." /></div>
+                <div><label class="label">Vence receta</label><input type="date" class="input" x-model="form.expirationDate" /></div>
+              </div>
+              <div><label class="label">Notas</label><textarea class="input" rows="2" x-model="form.notes" placeholder="Indicaciones, efectos, receta retenida, etc."></textarea></div>
+              <div>
+                <label class="label">Adjuntar receta</label>
+                <input type="file" class="input text-xs" @change="form.file = $event.target.files[0]" accept="image/*,.pdf" />
+              </div>
+              <div class="flex gap-2 pt-2">
+                <button class="btn-secondary flex-1 justify-center" @click="modal.show = false">Cancelar</button>
+                <button class="btn-primary flex-1 justify-center" @click="if(!form.endDate && form.startDate && form.durationDays){ const d = new Date(form.startDate); d.setDate(d.getDate()+Number(form.durationDays)); form.endDate=d.toISOString().split('T')[0]; } form.active = true; saveEntry('receta')">Guardar</button>
+              </div>
+            </div>
+          </div>
+        </template>
+
         <!-- Reminder Modal -->
         <template x-if="modal.type === 'reminder'">
           <div>
@@ -949,6 +1199,19 @@
                   <span class="text-slate-700 dark:text-slate-300 flex-1" x-text="formatFieldValue(k, v)"></span>
                 </div>
               </template>
+            </div>
+            <div x-show="modal.entry?.category === 'receta'" class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+              <h4 class="font-semibold text-sm mb-2">Historial de tomas registradas</h4>
+              <div class="space-y-2 max-h-48 overflow-y-auto">
+                <template x-for="t in treatmentLogs.filter(t => t.recipeId === modal.entry.id).sort((a,b) => (b.date + b.scheduledTime).localeCompare(a.date + a.scheduledTime))" :key="t.id || t.doseKey">
+                  <div class="flex items-center gap-3 p-2 rounded-xl bg-slate-50 dark:bg-slate-700 text-xs">
+                    <span x-text="t.status === 'tomada' ? '✅' : '↷'"></span>
+                    <span class="font-medium" x-text="formatDate(t.date) + ' ' + t.scheduledTime"></span>
+                    <span class="ml-auto badge" :class="t.status === 'tomada' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'" x-text="t.status"></span>
+                  </div>
+                </template>
+                <div x-show="treatmentLogs.filter(t => t.recipeId === modal.entry.id).length === 0" class="text-xs text-slate-400">Aún no hay tomas registradas para esta receta.</div>
+              </div>
             </div>
             <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
               <button class="btn-danger flex-1 justify-center" @click="deleteEntry(modal.entry); modal.show = false">Eliminar</button>
