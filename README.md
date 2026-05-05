@@ -1,9 +1,15 @@
-# MiHistorialMédico v2.2
+# MiHistorialMédico v2.3
 
-Cambios:
-- Logo y favicon integrados como assets.
-- Versión visible v2.2.
-- Mediciones ya no exige todos los campos: solo fecha + al menos un dato.
-- Agregada circunferencia craneana para controles pediátricos.
+Versión limpia con rollback visual del logo y corrección de mediciones.
 
-Si no ves el logo al subir a GitHub Pages, usa Ctrl+F5 o borra caché del sitio. El Service Worker puede mantener la versión anterior durante unos minutos.
+## Cambios
+- Rollback al logo original simple.
+- Se conserva la sección Estadísticas.
+- Mediciones permite cargar indicadores uno a uno.
+- Se agrega circunferencia craneana.
+- Puedes asociar una medición a un control/consulta existente.
+- Si no asocias control, la fecha es obligatoria.
+- Solo exige al menos un indicador para guardar.
+
+## Instalación
+Sube `index.html`, `styles.css`, `app.js` y este README a la raíz de tu repositorio GitHub Pages.
