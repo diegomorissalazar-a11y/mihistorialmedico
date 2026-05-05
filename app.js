@@ -273,6 +273,50 @@ window.tailwind = window.tailwind || {};
           this.showToast('Perfil creado ✓');
         },
 
+
+        sortedDoctors() {
+          const names = new Set();
+          this.consultas.forEach(c => { if (c.doctor) names.add(c.doctor); });
+          this.medicamentos.forEach(m => { if (m.doctor) names.add(m.doctor); });
+          return [...names].sort((a,b) => a.localeCompare(b, 'es'));
+        },
+
+        applySavedDoctor() {
+          if (this.form.savedDoctor && this.form.savedDoctor !== '__otro__') {
+            this.form.doctor = this.form.savedDoctor;
+          } else if (this.form.savedDoctor === '__otro__') {
+            this.form.doctor = '';
+          }
+        },
+
+        applyControlTypeDefaults() {
+          if (this.form.controlType === 'Control pediátrico') {
+            this.form.specialty = 'Pediatría';
+            if (!this.form.title) this.form.title = 'Control pediátrico';
+          }
+          if (this.form.controlType === 'Control nutricionista') {
+            this.form.specialty = 'Nutrición / Nutricionista';
+            if (!this.form.title) this.form.title = 'Control nutricionista';
+          }
+          if (this.form.controlType === 'Chequeo completo') {
+            if (!this.form.specialty) this.form.specialty = 'Medicina general';
+            if (!this.form.title) this.form.title = 'Chequeo completo';
+          }
+        },
+
+        addMonthsToDate(dateStr, months) {
+          const d = dateStr ? new Date(dateStr) : new Date();
+          if (isNaN(d)) return '';
+          const copy = new Date(d);
+          copy.setMonth(copy.getMonth() + Number(months));
+          return copy.toISOString().split('T')[0];
+        },
+
+        applyNextControlPreset() {
+          if (!this.form.nextControlPreset) return;
+          this.form.nextControlDate = this.addMonthsToDate(this.form.date || new Date().toISOString().split('T')[0], this.form.nextControlPreset);
+        },
+
         // ---- LOAD DATA ----
         async loadAllData() {
           await Promise.all([
@@ -461,6 +505,11 @@ window.tailwind = window.tailwind || {};
           }
 
           clean.id = id;
+
+          if (category === 'consulta') {
+            await this.createLinkedMeasurementFromConsulta(clean);
+            await this.createLinkedMedicationsFromConsulta(clean);
+          }
 
           // Update local state
           const stateKey = this.stateKeyFor(category);
@@ -745,7 +794,7 @@ window.tailwind = window.tailwind || {};
         // ---- CHARTS ----
         renderCharts() {
           this.$nextTick(() => {
-            this.renderWeightChart();
+            this.renderMeasurementCharts();
             this.renderIMCChart();
             this.renderExamTypeChart();
             this.renderConsultasChart();
@@ -758,18 +807,49 @@ window.tailwind = window.tailwind || {};
           if (this.charts[id]) { this.charts[id].destroy(); delete this.charts[id]; }
         },
 
-        renderWeightChart() {
-          const el = document.getElementById('weightChart');
-          if (!el || this.mediciones.length < 2) return;
-          this.destroyChart('weight');
-          const sorted = [...this.mediciones].reverse();
-          this.charts['weight'] = new Chart(el, {
+        metricSeries(key) {
+          return [...this.mediciones]
+            .filter(m => m && m[key] !== '' && m[key] !== null && m[key] !== undefined && !Number.isNaN(Number(m[key])))
+            .reverse();
+        },
+
+        renderMeasurementCharts() {
+          this.renderMetricChart('weightChart', 'weight', 'Peso (kg)', '#0ea5e9');
+          this.renderMetricChart('heightChart', 'height', 'Estatura (cm)', '#8b5cf6');
+          this.renderMetricChart('headCircumferenceChart', 'headCircumference', 'Circunferencia craneana (cm)', '#14b8a6');
+          this.renderMetricChart('glucoseChart', 'glucose', 'Glucosa (mg/dL)', '#f59e0b');
+          this.renderMetricChart('bpSysChart', 'bpSys', 'Presión sistólica', '#ef4444');
+          this.renderMetricChart('bpDiaChart', 'bpDia', 'Presión diastólica', '#ec4899');
+          this.renderMetricChart('cholesterolChart', 'cholesterol', 'Colesterol (mg/dL)', '#10b981');
+        },
+
+        renderMetricChart(canvasId, key, label, color) {
+          const el = document.getElementById(canvasId);
+          const series = this.metricSeries(key);
+          const chartKey = 'metric_' + key;
+          this.destroyChart(chartKey);
+          if (!el || series.length === 0) return;
+          this.charts[chartKey] = new Chart(el, {
             type: 'line',
             data: {
-              labels: sorted.map(m => this.formatDate(m.date?.toDate ? m.date.toDate() : new Date(m.date))),
-              datasets: [{ label: 'Peso (kg)', data: sorted.map(m => m.weight), borderColor: '#0ea5e9', backgroundColor: '#0ea5e920', tension: 0.4, fill: true, pointBackgroundColor: '#0ea5e9' }]
+              labels: series.map(m => this.formatDate(m.date?.toDate ? m.date.toDate() : new Date(m.date))),
+              datasets: [{
+                label,
+                data: series.map(m => Number(m[key])),
+                borderColor: color,
+                backgroundColor: color + '20',
+                tension: 0.35,
+                fill: true,
+                pointBackgroundColor: color,
+                pointRadius: 3
+              }]
             },
-            options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: false } } }
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: { y: { beginAtZero: false }, x: { ticks: { maxRotation: 0, autoSkip: true } } }
+            }
           });
         },
 
@@ -926,13 +1006,25 @@ window.tailwind = window.tailwind || {};
           return date.toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' });
         },
 
+
+        clinicalPhysicalSummary(c) {
+          const parts = [];
+          if (c?.weight) parts.push(c.weight + ' kg');
+          if (c?.height) parts.push(c.height + ' cm');
+          if (c?.headCircumference) parts.push('CC ' + c.headCircumference + ' cm');
+          if (c?.temperature) parts.push('T° ' + c.temperature);
+          if (c?.vitals) parts.push(c.vitals);
+          if (c?.physicalExam) parts.push(c.physicalExam);
+          return parts.length ? parts.join(' · ') : 'Sin detalle';
+        },
+
         measurementSummary(m) {
           const parts = [];
           if (m?.relatedControlTitle) parts.push(m.relatedControlTitle);
           if (m?.weight) parts.push(m.weight + ' kg');
           if (m?.height) parts.push(m.height + ' cm');
           if (m?.headCircumference) parts.push('Circ. craneana ' + m.headCircumference + ' cm');
-          if (m?.glucose) parts.push('Glucosa ' + m.glucose + ' mg/dL');
+          if (m?.temperature) parts.push('T° ' + m.temperature);\n          if (m?.vitals) parts.push(m.vitals);\n          if (m?.glucose) parts.push('Glucosa ' + m.glucose + ' mg/dL');
           if (m?.bpSys || m?.bpDia) parts.push('PA ' + (m.bpSys || '--') + '/' + (m.bpDia || '--'));
           if (m?.cholesterol) parts.push('Colesterol ' + m.cholesterol + ' mg/dL');
           if (m?.weight && m?.height) parts.push('IMC: ' + this.calcIMC(m));
@@ -964,7 +1056,7 @@ window.tailwind = window.tailwind || {};
         },
 
         translateKey(k) {
-          const t = { title:'Título', name:'Nombre', date:'Fecha', notes:'Notas', result:'Resultado', lab:'Laboratorio', subtype:'Tipo', doctor:'Médico', specialty:'Especialidad', hospital:'Centro', diagnosis:'Diagnóstico', dose:'Dosis', frequency:'Frecuencia', startDate:'Inicio', endDate:'Fin estimado', durationDays:'Duración del tratamiento (días)', visitType:'Tipo de control', stock:'Stock', active:'Activo', severity:'Severidad', reaction:'Reacción', surgeon:'Cirujano', center:'Centro', nextDate:'Próxima fecha', nextControlDate:'Fecha próximo control', weight:'Peso', height:'Estatura', glucose:'Glucosa', headCircumference:'Circunferencia craneana', relatedControlTitle:'Control asociado', bpSys:'Presión Sist.', bpDia:'Presión Diast.', cholesterol:'Colesterol', headCircumference:'Perímetro cefálico', fileUrl:'Archivo', category:'Categoría', lastDate:'Último control', frequencyMonths:'Frecuencia meses', expirationDate:'Vence receta', startTime:'Hora inicial', frequencyHours:'Cada horas', endRealDate:'Término real', endReason:'Motivo término', scheduledTime:'Hora programada', loggedAt:'Hora registro', status:'Estado' };
+          const t = { title:'Título', name:'Nombre', date:'Fecha', notes:'Notas', result:'Resultado', lab:'Laboratorio', subtype:'Tipo', doctor:'Médico', specialty:'Especialidad', hospital:'Centro', diagnosis:'Diagnóstico', dose:'Dosis', frequency:'Frecuencia', startDate:'Inicio', endDate:'Fin estimado', durationDays:'Duración del tratamiento (días)', visitType:'Tipo de control', stock:'Stock', active:'Activo', severity:'Severidad', reaction:'Reacción', surgeon:'Cirujano', center:'Centro', nextDate:'Próxima fecha', nextControlDate:'Fecha próximo control', weight:'Peso', height:'Estatura', glucose:'Glucosa', headCircumference:'Circunferencia craneana', temperature:'Temperatura', vitals:'Signos vitales', physicalExam:'Examen físico', medicationsText:'Medicamentos indicados', generalInstructions:'Indicaciones generales', relatedControlTitle:'Control asociado', bpSys:'Presión Sist.', bpDia:'Presión Diast.', cholesterol:'Colesterol', headCircumference:'Perímetro cefálico', fileUrl:'Archivo', category:'Categoría', lastDate:'Último control', frequencyMonths:'Frecuencia meses', expirationDate:'Vence receta', startTime:'Hora inicial', frequencyHours:'Cada horas', endRealDate:'Término real', endReason:'Motivo término', scheduledTime:'Hora programada', loggedAt:'Hora registro', status:'Estado' };
           return t[k] || k;
         },
 
@@ -1037,7 +1129,7 @@ window.tailwind = window.tailwind || {};
       if (!('serviceWorker' in navigator)) return;
       window.addEventListener('load', () => {
         const swCode = `
-const CACHE = 'mihm-v2.3';
+const CACHE = 'mihm-v2.5';
 const ASSETS = ['./', './index.html', './styles.css', './app.js'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).catch(() => undefined)));
