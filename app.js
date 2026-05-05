@@ -397,7 +397,15 @@ window.tailwind = window.tailwind || {};
 
           // Validate required fields
           const titleField = f.title || f.name;
-          if (!titleField) { this.showToast('Completa los campos obligatorios (*)', 'error'); return; }
+          if (category === 'medicion') {
+            if (!f.date) { this.showToast('La fecha es obligatoria', 'error'); return; }
+            const hasMetric = ['weight','height','headCircumference','glucose','bpSys','bpDia','cholesterol'].some(k => f[k] !== '' && f[k] !== null && f[k] !== undefined);
+            if (!hasMetric) { this.showToast('Ingresa al menos una medición', 'error'); return; }
+            f.title = 'Medición corporal';
+            f.name = 'Medición corporal';
+          } else if (!titleField) {
+            this.showToast('Completa los campos obligatorios (*)', 'error'); return;
+          }
 
           // Handle file upload
           if (f.file && isFirebaseReady) {
@@ -901,6 +909,18 @@ window.tailwind = window.tailwind || {};
           return date.toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' });
         },
 
+        measurementSummary(m) {
+          const parts = [];
+          if (m?.weight) parts.push(m.weight + ' kg');
+          if (m?.height) parts.push(m.height + ' cm');
+          if (m?.headCircumference) parts.push('CC ' + m.headCircumference + ' cm');
+          if (m?.glucose) parts.push('Glucosa ' + m.glucose + ' mg/dL');
+          if (m?.bpSys || m?.bpDia) parts.push('PA ' + (m.bpSys || '--') + '/' + (m.bpDia || '--'));
+          if (m?.cholesterol) parts.push('Colesterol ' + m.cholesterol + ' mg/dL');
+          if (m?.weight && m?.height) parts.push('IMC: ' + this.calcIMC(m));
+          return parts.length ? parts.join(' · ') : 'Sin datos';
+        },
+
         calcIMC(m, raw = false) {
           if (!m?.weight || !m?.height) return raw ? null : '—';
           const imc = m.weight / Math.pow(m.height / 100, 2);
@@ -926,7 +946,7 @@ window.tailwind = window.tailwind || {};
         },
 
         translateKey(k) {
-          const t = { title:'Título', name:'Nombre', date:'Fecha', notes:'Notas', result:'Resultado', lab:'Laboratorio', subtype:'Tipo', doctor:'Médico', specialty:'Especialidad', hospital:'Centro', diagnosis:'Diagnóstico', dose:'Dosis', frequency:'Frecuencia', startDate:'Inicio', endDate:'Fin estimado', durationDays:'Duración del tratamiento (días)', visitType:'Tipo de control', stock:'Stock', active:'Activo', severity:'Severidad', reaction:'Reacción', surgeon:'Cirujano', center:'Centro', nextDate:'Próxima fecha', nextControlDate:'Fecha próximo control', weight:'Peso', height:'Estatura', glucose:'Glucosa', bpSys:'Presión Sist.', bpDia:'Presión Diast.', cholesterol:'Colesterol', headCircumference:'Perímetro cefálico', fileUrl:'Archivo', category:'Categoría', lastDate:'Último control', frequencyMonths:'Frecuencia meses', expirationDate:'Vence receta', startTime:'Hora inicial', frequencyHours:'Cada horas', endRealDate:'Término real', endReason:'Motivo término', scheduledTime:'Hora programada', loggedAt:'Hora registro', status:'Estado' };
+          const t = { title:'Título', name:'Nombre', date:'Fecha', notes:'Notas', result:'Resultado', lab:'Laboratorio', subtype:'Tipo', doctor:'Médico', specialty:'Especialidad', hospital:'Centro', diagnosis:'Diagnóstico', dose:'Dosis', frequency:'Frecuencia', startDate:'Inicio', endDate:'Fin estimado', durationDays:'Duración del tratamiento (días)', visitType:'Tipo de control', stock:'Stock', active:'Activo', severity:'Severidad', reaction:'Reacción', surgeon:'Cirujano', center:'Centro', nextDate:'Próxima fecha', nextControlDate:'Fecha próximo control', weight:'Peso', height:'Estatura', glucose:'Glucosa', headCircumference:'Circunferencia craneana', bpSys:'Presión Sist.', bpDia:'Presión Diast.', cholesterol:'Colesterol', headCircumference:'Perímetro cefálico', fileUrl:'Archivo', category:'Categoría', lastDate:'Último control', frequencyMonths:'Frecuencia meses', expirationDate:'Vence receta', startTime:'Hora inicial', frequencyHours:'Cada horas', endRealDate:'Término real', endReason:'Motivo término', scheduledTime:'Hora programada', loggedAt:'Hora registro', status:'Estado' };
           return t[k] || k;
         },
 
@@ -1025,7 +1045,10 @@ self.addEventListener('fetch', e => {
         display: 'standalone',
         theme_color: '#0ea5e9',
         background_color: '#f0f9ff',
-        icons: [{ src: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="%230ea5e9"/><path d="M30 20h40a5 5 0 015 5v50a5 5 0 01-5 5H30a5 5 0 01-5-5V25a5 5 0 015-5zm15 5v10H35v5h10v10h5V40h10v-5H50V25h-5z" fill="white"/></svg>', sizes: '192x192', type: 'image/svg+xml' }]
+        icons: [
+          { src: 'assets/brand/app-icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+          { src: 'assets/brand/app-icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+        ]
       };
       const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
       manifestLink.href = URL.createObjectURL(manifestBlob);
