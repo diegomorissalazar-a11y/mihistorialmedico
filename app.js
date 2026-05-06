@@ -486,6 +486,7 @@ window.tailwind = window.tailwind || {};
             } catch(e) { console.warn('Upload failed', e); }
           }
           delete f.file;
+          this.materializeConsultaItems(f);
           if ((category === 'medicamento' || category === 'receta') && !f.endDate && f.startDate && f.durationDays) {
             f.endDate = this.estimatedEndDate(f.startDate, f.durationDays);
           }
@@ -562,6 +563,126 @@ window.tailwind = window.tailwind || {};
           const stateKey = this.stateKeyFor(cat);
           if (stateKey) this[stateKey] = this[stateKey].filter(e => e.id !== entry.id);
           this.showToast('Eliminado ✓');
+        },
+
+
+        // ---- FORMULARIO CONSULTA POR ÍTEMS ----
+        sortedMedicalCenters() {
+          const centers = new Set();
+          this.consultas.forEach(c => {
+            const v = c.hospital || c.centroMedico || c.center;
+            if (v) centers.add(v);
+          });
+          return [...centers].sort((a,b) => a.localeCompare(b, 'es'));
+        },
+
+        applySavedCenter() {
+          if (this.form.savedCenter && this.form.savedCenter !== '__otro__') {
+            this.form.hospital = this.form.savedCenter;
+          } else if (this.form.savedCenter === '__otro__') {
+            this.form.hospital = '';
+          }
+        },
+
+        sortedMedicationNames() {
+          const names = new Set();
+          this.medicamentos.forEach(m => { if (m.name) names.add(m.name); });
+          this.consultas.forEach(c => {
+            (c.medicationItems || []).forEach(m => { if (m.name) names.add(m.name); });
+          });
+          return [...names].sort((a,b) => a.localeCompare(b, 'es'));
+        },
+
+        addMedicationItem() {
+          if (!this.form.medicationItems) this.form.medicationItems = [];
+          this.form.medicationItems.push({ savedName: '', name: '', dose: '', frequency: '', durationDays: '', durationText: '', route: '', notes: '' });
+        },
+
+        applyMedicationName(med) {
+          if (med.savedName && med.savedName !== '__otro__') med.name = med.savedName;
+          if (med.savedName === '__otro__') med.name = '';
+        },
+
+        sortedExamOrderNames() {
+          const names = new Set();
+          (this.examOrders || []).forEach(o => { if (o.name) names.add(o.name); });
+          this.consultas.forEach(c => {
+            (c.examOrderItems || []).forEach(o => { if (o.name) names.add(o.name); });
+          });
+          return [...names].sort((a,b) => a.localeCompare(b, 'es'));
+        },
+
+        addExamOrderItem() {
+          if (!this.form.examOrderItems) this.form.examOrderItems = [];
+          this.form.examOrderItems.push({ savedName: '', name: '', type: 'Laboratorio', notes: '' });
+        },
+
+        applyExamOrderName(order) {
+          if (order.savedName && order.savedName !== '__otro__') order.name = order.savedName;
+          if (order.savedName === '__otro__') order.name = '';
+        },
+
+        physicalUnitFor(type) {
+          const t = (type || '').toLowerCase();
+          if (t.includes('peso')) return 'kg';
+          if (t.includes('talla') || t.includes('craneana')) return 'cm';
+          if (t.includes('temperatura')) return '°C';
+          if (t.includes('saturación')) return '%';
+          if (t.includes('frecuencia')) return 'lpm';
+          if (t.includes('presión')) return 'mmHg';
+          if (t.includes('glucosa') || t.includes('colesterol')) return 'mg/dL';
+          return '';
+        },
+
+        addPhysicalItem(type = 'Peso') {
+          if (!this.form.physicalItems) this.form.physicalItems = [];
+          this.form.physicalItems.push({ type, value: '', unit: this.physicalUnitFor(type), notes: '' });
+        },
+
+        applyPhysicalUnit(item) {
+          if (!item.unit) item.unit = this.physicalUnitFor(item.type);
+        },
+
+        physicalMetricKey(type) {
+          const t = (type || '').toLowerCase();
+          if (t.includes('peso')) return 'weight';
+          if (t.includes('talla') || t.includes('estatura')) return 'height';
+          if (t.includes('craneana')) return 'headCircumference';
+          if (t.includes('temperatura')) return 'temperature';
+          if (t.includes('glucosa')) return 'glucose';
+          if (t.includes('colesterol')) return 'cholesterol';
+          if (t.includes('sistólica')) return 'bpSys';
+          if (t.includes('diastólica')) return 'bpDia';
+          return '';
+        },
+
+        materializeConsultaItems(f) {
+          if (f.category !== 'consulta') return f;
+
+          if (Array.isArray(f.physicalItems)) {
+            for (const item of f.physicalItems) {
+              const key = this.physicalMetricKey(item.type);
+              if (key && item.value !== '' && item.value !== null && item.value !== undefined) {
+                f[key] = item.value;
+              }
+            }
+          }
+
+          if (Array.isArray(f.medicationItems)) {
+            f.medicationsText = f.medicationItems
+              .filter(m => m.name)
+              .map(m => [m.name, m.dose, m.frequency, (m.durationDays ? m.durationDays + ' días' : m.durationText), m.route, m.notes].filter(Boolean).join(' | '))
+              .join('\n');
+          }
+
+          if (Array.isArray(f.examOrderItems)) {
+            f.examOrdersText = f.examOrderItems
+              .filter(o => o.name)
+              .map(o => [o.name, o.type, o.notes].filter(Boolean).join(' | '))
+              .join('\n');
+          }
+
+          return f;
         },
 
         // ---- MEDICAMENTOS TOMA ----
@@ -1063,7 +1184,7 @@ window.tailwind = window.tailwind || {};
         },
 
         translateKey(k) {
-          const t = { title:'Título', name:'Nombre', date:'Fecha', notes:'Notas', result:'Resultado', lab:'Laboratorio', subtype:'Tipo', doctor:'Médico', specialty:'Especialidad', hospital:'Centro', diagnosis:'Diagnóstico', dose:'Dosis', frequency:'Frecuencia', startDate:'Inicio', endDate:'Fin estimado', durationDays:'Duración del tratamiento (días)', visitType:'Tipo de control', stock:'Stock', active:'Activo', severity:'Severidad', reaction:'Reacción', surgeon:'Cirujano', center:'Centro', nextDate:'Próxima fecha', nextControlDate:'Fecha próximo control', weight:'Peso', height:'Estatura', glucose:'Glucosa', headCircumference:'Circunferencia craneana', temperature:'Temperatura', vitals:'Signos vitales', physicalExam:'Examen físico', medicationsText:'Medicamentos indicados', generalInstructions:'Indicaciones generales', relatedControlTitle:'Control asociado', bpSys:'Presión Sist.', bpDia:'Presión Diast.', cholesterol:'Colesterol', headCircumference:'Perímetro cefálico', fileUrl:'Archivo', category:'Categoría', lastDate:'Último control', frequencyMonths:'Frecuencia meses', expirationDate:'Vence receta', startTime:'Hora inicial', frequencyHours:'Cada horas', endRealDate:'Término real', endReason:'Motivo término', scheduledTime:'Hora programada', loggedAt:'Hora registro', status:'Estado' };
+          const t = { title:'Título', name:'Nombre', date:'Fecha', notes:'Notas', result:'Resultado', lab:'Laboratorio', subtype:'Tipo', doctor:'Médico', specialty:'Especialidad', hospital:'Centro', diagnosis:'Diagnóstico', dose:'Dosis', frequency:'Frecuencia', startDate:'Inicio', endDate:'Fin estimado', durationDays:'Duración del tratamiento (días)', visitType:'Tipo de control', stock:'Stock', active:'Activo', severity:'Severidad', reaction:'Reacción', surgeon:'Cirujano', center:'Centro', nextDate:'Próxima fecha', nextControlDate:'Fecha próximo control', weight:'Peso', height:'Estatura', glucose:'Glucosa', headCircumference:'Circunferencia craneana', temperature:'Temperatura', vitals:'Signos vitales', physicalExam:'Examen físico', medicationItems:'Medicamentos indicados', examOrderItems:'Órdenes / exámenes', physicalItems:'Examen físico', medicationsText:'Medicamentos indicados', generalInstructions:'Indicaciones generales', relatedControlTitle:'Control asociado', bpSys:'Presión Sist.', bpDia:'Presión Diast.', cholesterol:'Colesterol', headCircumference:'Perímetro cefálico', fileUrl:'Archivo', category:'Categoría', lastDate:'Último control', frequencyMonths:'Frecuencia meses', expirationDate:'Vence receta', startTime:'Hora inicial', frequencyHours:'Cada horas', endRealDate:'Término real', endReason:'Motivo término', scheduledTime:'Hora programada', loggedAt:'Hora registro', status:'Estado' };
           return t[k] || k;
         },
 
@@ -1080,7 +1201,7 @@ window.tailwind = window.tailwind || {};
         openModal(type) {
           const today = new Date().toISOString().split('T')[0];
           this.form = { date: today, active: true };
-          if (type === 'consulta') this.form = { date: today, visitType: 'Consulta general', title: '', doctorSelect: '', doctorOther: false, doctor: '', specialty: '', active: true };
+          if (type === 'consulta') this.form = { date: today, controlType: 'Consulta general', title: '', savedDoctor: '', doctor: '', specialty: '', savedCenter: '', hospital: '', nextControlDate: '', nextControlPreset: '', physicalItems: [], medicationItems: [], examOrderItems: [], diagnosis: '', physicalExam: '', generalInstructions: '', active: true };
           if (type === 'medicamento') this.form = { name: '', dose: '', frequency: 'Diaria', startDate: today, durationDays: 10, stock: '', active: true };
           if (type === 'control') this.form = { title: '', lastDate: today, frequencyMonths: 12, icon: '🩺', active: true };
           if (type === 'receta') this.form = { name: '', dose: '', frequencyHours: 12, startTime: '08:00', durationDays: 7, startDate: today, endDate: '', expirationDate: '', active: true };
@@ -1136,7 +1257,7 @@ window.tailwind = window.tailwind || {};
       if (!('serviceWorker' in navigator)) return;
       window.addEventListener('load', () => {
         const swCode = `
-const CACHE = 'mihm-v2.9';
+const CACHE = 'mihm-v2.10';
 const ASSETS = ['./', './index.html', './styles.css', './app.js'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).catch(() => undefined)));

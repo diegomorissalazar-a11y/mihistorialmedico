@@ -56,7 +56,7 @@
         </div>
         <h1 class="text-2xl font-bold text-slate-800 dark:text-white">MiHistorial<span class="text-sky-500">Médico</span></h1>
         <p class="text-slate-500 dark:text-slate-400 text-sm mt-1">Tu historial de salud de por vida</p>
-        <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Versión v2.9</p>
+        <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Versión v2.10</p>
       </div>
 
       <!-- Form -->
@@ -161,7 +161,7 @@
 
       <!-- Footer -->
       <div class="p-3 border-t border-slate-100 dark:border-slate-700 space-y-0.5">
-        <div class="px-4 pb-2 text-[11px] text-slate-400 dark:text-slate-500">MiHistorialMédico v2.9</div>
+        <div class="px-4 pb-2 text-[11px] text-slate-400 dark:text-slate-500">MiHistorialMédico v2.10</div>
         <button class="sidebar-link w-full" @click="exportCSV()">📤 Exportar CSV</button>
         <button class="sidebar-link w-full" @click="darkMode = !darkMode">
           <span x-text="darkMode ? '☀️' : '🌙'"></span>
@@ -1115,17 +1115,20 @@
         </template>
 
         
+        
         <!-- Consulta Modal -->
         <template x-if="modal.type === 'consulta'">
           <div>
             <h3 class="font-bold text-lg mb-1">🏥 Nueva consulta / control</h3>
-            <p class="text-xs text-slate-400 mb-4">Estructura clínica: examen físico, diagnóstico, medicamentos e indicaciones generales.</p>
+            <p class="text-xs text-slate-400 mb-4">Carga estructurada por ítems: examen físico, medicamentos y órdenes médicas uno a uno.</p>
 
             <div class="space-y-4">
               <!-- Datos generales -->
               <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-700/40 space-y-3">
                 <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-200">1. Datos del control</h4>
+
                 <div><label class="label">Motivo / Título *</label><input class="input" x-model="form.title" placeholder="Ej: Control pediátrico, Resfrío común, Control nutricionista" /></div>
+
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="label">Tipo de control</label>
@@ -1140,6 +1143,7 @@
                   </div>
                   <div><label class="label">Fecha *</label><input type="date" class="input" x-model="form.date" /></div>
                 </div>
+
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="label">Médico</label>
@@ -1154,10 +1158,22 @@
                   </div>
                   <div><label class="label">Especialidad</label><input class="input" x-model="form.specialty" placeholder="Pediatría, Nutrición, Medicina general..." /></div>
                 </div>
+
                 <div class="grid grid-cols-2 gap-3">
-                  <div><label class="label">Centro médico</label><input class="input" x-model="form.hospital" placeholder="Ej: Clínica, CESFAM, centro médico" /></div>
+                  <div>
+                    <label class="label">Centro médico</label>
+                    <select class="input" x-model="form.savedCenter" @change="applySavedCenter()">
+                      <option value="">Seleccionar centro</option>
+                      <template x-for="c in sortedMedicalCenters()" :key="c">
+                        <option :value="c" x-text="c"></option>
+                      </template>
+                      <option value="__otro__">Otro centro...</option>
+                    </select>
+                    <input x-show="form.savedCenter === '__otro__' || !form.savedCenter" class="input mt-2" x-model="form.hospital" placeholder="Ej: Clínica, CESFAM, centro médico" />
+                  </div>
                   <div><label class="label">Fecha próximo control</label><input type="date" class="input" x-model="form.nextControlDate" /></div>
                 </div>
+
                 <div>
                   <label class="label">Próximo control en</label>
                   <select class="input" x-model="form.nextControlPreset" @change="applyNextControlPreset()">
@@ -1174,23 +1190,44 @@
               <!-- Examen físico -->
               <div class="p-3 rounded-2xl bg-sky-50 dark:bg-sky-900/20 space-y-3">
                 <h4 class="text-sm font-semibold text-sky-800 dark:text-sky-200">2. Examen físico</h4>
-                <div class="grid grid-cols-2 gap-3">
-                  <div><label class="label">Peso (kg)</label><input type="number" step="0.1" class="input" x-model="form.weight" placeholder="Ej: 11.2" /></div>
-                  <div><label class="label">Talla / estatura (cm)</label><input type="number" step="0.1" class="input" x-model="form.height" placeholder="Ej: 83" /></div>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                  <div><label class="label">Circ. craneana (cm)</label><input type="number" step="0.1" class="input" x-model="form.headCircumference" placeholder="Ej: 47.8" /></div>
-                  <div>
-                    <label class="label">IMC automático</label>
-                    <div class="input bg-slate-100 dark:bg-slate-700 text-slate-500" x-text="calcIMC(form)"></div>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Agrega indicadores uno a uno. Peso, talla y circunferencia craneana alimentarán Mediciones y sus gráficos.</p>
+
+                <template x-for="(item, idx) in form.physicalItems" :key="'phy-'+idx">
+                  <div class="p-3 rounded-xl bg-white dark:bg-slate-800 border border-sky-100 dark:border-sky-800 space-y-2">
+                    <div class="grid md:grid-cols-4 gap-2">
+                      <select class="input" x-model="item.type" @change="applyPhysicalUnit(item)">
+                        <option>Peso</option>
+                        <option>Talla</option>
+                        <option>Circunferencia craneana</option>
+                        <option>Temperatura</option>
+                        <option>Saturación</option>
+                        <option>Frecuencia cardíaca</option>
+                        <option>Presión sistólica</option>
+                        <option>Presión diastólica</option>
+                        <option>Glucosa</option>
+                        <option>Colesterol</option>
+                        <option>Otro</option>
+                      </select>
+                      <input type="number" step="0.1" class="input" x-model="item.value" placeholder="Valor" />
+                      <input class="input" x-model="item.unit" placeholder="Unidad" />
+                      <button class="btn-danger justify-center" @click="form.physicalItems.splice(idx,1)">Eliminar</button>
+                    </div>
+                    <input class="input" x-model="item.notes" placeholder="Observación opcional" />
                   </div>
+                </template>
+
+                <div class="flex flex-wrap gap-2">
+                  <button class="btn-secondary" @click="addPhysicalItem('Peso')">+ Peso</button>
+                  <button class="btn-secondary" @click="addPhysicalItem('Talla')">+ Talla</button>
+                  <button class="btn-secondary" @click="addPhysicalItem('Circunferencia craneana')">+ Circ. craneana</button>
+                  <button class="btn-secondary" @click="addPhysicalItem('Temperatura')">+ Temperatura</button>
+                  <button class="btn-secondary" @click="addPhysicalItem('Otro')">+ Otro</button>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
-                  <div><label class="label">Temperatura (°C)</label><input type="number" step="0.1" class="input" x-model="form.temperature" placeholder="Ej: 37.2" /></div>
-                  <div><label class="label">Saturación / pulso</label><input class="input" x-model="form.vitals" placeholder="Ej: Sat 98%, FC 110" /></div>
+
+                <div>
+                  <label class="label">Descripción examen físico</label>
+                  <textarea class="input" rows="3" x-model="form.physicalExam" placeholder="Ej: Congestión nasal, abdomen blando, sin ruidos agregados..."></textarea>
                 </div>
-                <div><label class="label">Descripción examen físico</label><textarea class="input" rows="3" x-model="form.physicalExam" placeholder="Ej: Congestión nasal, abdomen blando, sin ruidos agregados..."></textarea></div>
-                <p class="text-[11px] text-sky-700 dark:text-sky-300">Si ingresas peso, talla, circunferencia craneana u otros indicadores, se guardarán también en Mediciones y alimentarán los gráficos.</p>
               </div>
 
               <!-- Diagnóstico -->
@@ -1202,11 +1239,35 @@
               <!-- Medicamentos -->
               <div class="p-3 rounded-2xl bg-amber-50 dark:bg-amber-900/20 space-y-3">
                 <h4 class="text-sm font-semibold text-amber-800 dark:text-amber-200">4. Medicamentos indicados</h4>
-                <p class="text-xs text-slate-500 dark:text-slate-400">Ingresa un medicamento por línea. La app intentará reconocer frecuencia y duración.</p>
-                <textarea class="input font-mono text-xs" rows="5" x-model="form.medicationsText" placeholder="Ej:
-Levorigotax gotas 20 ml | 11 gotas cada 24 horas | por 2 semanas
-Broncotusilan 100mg/5ml | 2,5 ml cada 8 horas | por 10 días"></textarea>
-                <p class="text-[11px] text-amber-700 dark:text-amber-300">Al guardar, cada línea se creará como medicamento activo con duración estimada.</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Agrega medicamentos uno a uno. El nombre quedará disponible para volver a usarlo.</p>
+
+                <template x-for="(med, idx) in form.medicationItems" :key="'med-'+idx">
+                  <div class="p-3 rounded-xl bg-white dark:bg-slate-800 border border-amber-100 dark:border-amber-800 space-y-2">
+                    <div class="grid md:grid-cols-3 gap-2">
+                      <div>
+                        <select class="input" x-model="med.savedName" @change="applyMedicationName(med)">
+                          <option value="">Seleccionar medicamento</option>
+                          <template x-for="n in sortedMedicationNames()" :key="n">
+                            <option :value="n" x-text="n"></option>
+                          </template>
+                          <option value="__otro__">Otro medicamento...</option>
+                        </select>
+                        <input x-show="med.savedName === '__otro__' || !med.savedName" class="input mt-2" x-model="med.name" placeholder="Nombre medicamento" />
+                      </div>
+                      <input class="input" x-model="med.dose" placeholder="Dosis. Ej: 2,5 ml / 11 gotas" />
+                      <input class="input" x-model="med.frequency" placeholder="Frecuencia. Ej: cada 8 horas" />
+                    </div>
+                    <div class="grid md:grid-cols-4 gap-2">
+                      <input type="number" class="input" x-model="med.durationDays" placeholder="Días de consumo" />
+                      <input class="input" x-model="med.durationText" placeholder="Texto duración. Ej: 2 semanas" />
+                      <input class="input" x-model="med.route" placeholder="Vía. Ej: oral" />
+                      <button class="btn-danger justify-center" @click="form.medicationItems.splice(idx,1)">Eliminar</button>
+                    </div>
+                    <input class="input" x-model="med.notes" placeholder="Observaciones opcionales" />
+                  </div>
+                </template>
+
+                <button class="btn-secondary" @click="addMedicationItem()">+ Agregar medicamento</button>
               </div>
 
               <!-- Indicaciones -->
@@ -1218,10 +1279,35 @@ Broncotusilan 100mg/5ml | 2,5 ml cada 8 horas | por 10 días"></textarea>
               <!-- Órdenes médicas / exámenes -->
               <div class="p-3 rounded-2xl bg-purple-50 dark:bg-purple-900/20 space-y-3">
                 <h4 class="text-sm font-semibold text-purple-800 dark:text-purple-200">6. Órdenes médicas / exámenes solicitados</h4>
-                <p class="text-xs text-slate-500 dark:text-slate-400">Ingresa un examen por línea. Se crearán como pendientes de agendar.</p>
-                <textarea class="input font-mono text-xs" rows="4" x-model="form.examOrdersText" placeholder="Ej:
-Hemograma completo | Laboratorio | Ayuno 8 horas
-Radiografía de tórax | Imagenología"></textarea>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Agrega órdenes una a una. Quedarán en seguimiento como pendientes de agendar.</p>
+
+                <template x-for="(order, idx) in form.examOrderItems" :key="'ord-'+idx">
+                  <div class="p-3 rounded-xl bg-white dark:bg-slate-800 border border-purple-100 dark:border-purple-800 space-y-2">
+                    <div class="grid md:grid-cols-4 gap-2">
+                      <div>
+                        <select class="input" x-model="order.savedName" @change="applyExamOrderName(order)">
+                          <option value="">Seleccionar examen</option>
+                          <template x-for="n in sortedExamOrderNames()" :key="n">
+                            <option :value="n" x-text="n"></option>
+                          </template>
+                          <option value="__otro__">Otro examen...</option>
+                        </select>
+                        <input x-show="order.savedName === '__otro__' || !order.savedName" class="input mt-2" x-model="order.name" placeholder="Nombre examen / orden" />
+                      </div>
+                      <select class="input" x-model="order.type">
+                        <option>Laboratorio</option>
+                        <option>Imagenología</option>
+                        <option>Procedimiento</option>
+                        <option>Derivación</option>
+                        <option>Otro</option>
+                      </select>
+                      <input class="input" x-model="order.notes" placeholder="Indicación. Ej: ayuno 8 horas" />
+                      <button class="btn-danger justify-center" @click="form.examOrderItems.splice(idx,1)">Eliminar</button>
+                    </div>
+                  </div>
+                </template>
+
+                <button class="btn-secondary" @click="addExamOrderItem()">+ Agregar orden / examen</button>
               </div>
 
               <div>
@@ -1433,7 +1519,7 @@ Radiografía de tórax | Imagenología"></textarea>
               <button class="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl" @click="modal.show = false">✕</button>
             </div>
             <div class="space-y-3">
-              <template x-for="[k, v] in Object.entries(modal.entry).filter(([k]) => !['id','category','uid','profileId','createdAt'].includes(k) && v)" :key="k">
+              <template x-for="[k, v] in Object.entries(modal.entry).filter(([k, v]) => !['id','category','uid','profileId','createdAt'].includes(k) && v)" :key="k">
                 <div class="flex items-start gap-3 text-sm">
                   <span class="text-slate-400 capitalize min-w-[100px]" x-text="translateKey(k)"></span>
                   <span class="text-slate-700 dark:text-slate-300 flex-1" x-text="formatFieldValue(k, v)"></span>

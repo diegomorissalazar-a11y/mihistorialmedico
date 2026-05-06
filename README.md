@@ -1,41 +1,58 @@
-# MiHistorialMédico v2.9
+# MiHistorialMédico v2.10
 
-Versión estable con corrección de guardado de consultas y módulo de órdenes médicas.
+## Cambios principales
+
+### Consulta / Control
+El formulario ahora permite cargar por ítems:
+
+1. Centro médico reutilizable.
+2. Examen físico uno a uno.
+3. Medicamentos uno a uno.
+4. Órdenes médicas / exámenes uno a uno.
+
+### Centro médico
+Cada centro médico usado en consultas queda disponible para volver a seleccionarlo.
+
+### Medicamentos
+Cada medicamento indicado se agrega como tarjeta:
+- Nombre.
+- Dosis.
+- Frecuencia.
+- Días de consumo.
+- Vía.
+- Observaciones.
+
+Al guardar la consulta, cada medicamento pasa automáticamente al panel Medicamentos.
+
+### Examen físico
+Cada indicador se agrega por separado:
+- Peso.
+- Talla.
+- Circunferencia craneana.
+- Temperatura.
+- Saturación.
+- Frecuencia cardíaca.
+- Presión.
+- Glucosa.
+- Colesterol.
+- Otro.
+
+Los indicadores reconocidos alimentan Mediciones y gráficos.
+
+### Órdenes médicas / exámenes
+Cada orden se agrega como tarjeta:
+- Nombre.
+- Tipo/categoría.
+- Indicación.
+
+Al guardar la consulta, se crea en la sección Órdenes / exámenes como pendiente de agendar.
 
 ## Correcciones
-- Se corrige error `this.createLinkedMeasurementFromConsulta is not a function`.
-- Se elimina registro Service Worker por blob que fallaba en GitHub Pages.
-- Se elimina manifest inline roto para evitar error de consola.
-- Se agrega favicon inline para evitar 404.
-- Se mantiene Tailwind CDN: el warning de producción es informativo y no rompe la app.
+- Se corrige error Alpine `v is not defined` en detalle de registros.
+- Se elimina Service Worker por blob que generaba error en GitHub Pages.
+- Se elimina manifest roto.
+- `app.js` validado con `node --check`.
 
-## Nuevo en consulta/control
-Dentro de Consulta / Control se agrega:
-
-6. Órdenes médicas / exámenes solicitados
-
-Formato sugerido, un examen por línea:
-
-```text
-Hemograma completo | Laboratorio | Ayuno 8 horas
-Radiografía de tórax | Imagenología
-Perfil lipídico | Laboratorio
-```
-
-Al guardar la consulta:
-- Se crea la consulta.
-- Las mediciones del examen físico alimentan Mediciones.
-- Los medicamentos indicados alimentan Medicamentos.
-- Las órdenes de exámenes alimentan la nueva sección Órdenes / exámenes.
-
-## Estados de órdenes
-- Pendiente agendar
-- Cita agendada
-- Resultado pendiente
-- Completado
-
-## Recomendación al publicar
-Después de subir a GitHub Pages:
-1. Ctrl + F5.
-2. Si sigue cargando versión antigua: DevTools > Application > Service Workers > Unregister.
-3. Borra Cache Storage.
+## Publicación
+Reemplaza todos los archivos en GitHub Pages y luego haz Ctrl+F5.
+Si se mantiene una versión antigua, borra el Service Worker y Cache Storage desde DevTools > Application.
