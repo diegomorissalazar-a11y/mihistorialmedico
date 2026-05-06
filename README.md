@@ -1,18 +1,85 @@
-# MiHistorialMédico v2.6
+# MiHistorialMédico v2.7
 
-Funcionalidad nueva: carga de consultas y controles desde fotos en modo mock local.
+## Cambio principal
 
-Incluye:
-- Subir/tomar foto.
-- Validación JPG/PNG/WEBP y tamaño máximo 8 MB.
-- Preview de imagen.
-- Mock OCR/IA sin API externa.
-- Pantalla de revisión antes de guardar.
-- 5 secciones: examen físico, diagnóstico/medicamentos, indicaciones, próximo control y órdenes médicas.
-- Mediciones confirmadas alimentan dashboard.
+Se elimina el enfoque OCR dentro de la app y se agrega un **Importador JSON/CSV**.
+
+Flujo recomendado:
+
+1. El usuario envía fotos de consultas/controles por ChatGPT.
+2. ChatGPT extrae los campos y devuelve un JSON o CSV estructurado.
+3. El usuario carga ese JSON/CSV en la app.
+4. La app muestra una pantalla de revisión.
+5. El usuario edita/confirma.
+6. Recién después se guarda en el historial.
+
+## Importador
+
+Sección nueva:
+
+- 📥 Importar JSON/CSV
+
+Permite:
+
+- Pegar JSON.
+- Pegar CSV simple.
+- Cargar archivo `.json` o `.csv`.
+- Previsualizar.
+- Editar antes de guardar.
+- Descargar JSON/CSV corregido.
+- Guardar consulta importada.
+
+## Estructura JSON esperada
+
+Ver `samples/consulta_ejemplo.json`.
+
+Campos principales:
+
+- fechaConsulta
+- titulo
+- profesional
+- especialidad
+- centroMedico
+- mediciones
+- diagnosticos
+- medicamentos
+- indicacionesGenerales
+- proximoControl
+- ordenesExamenes
+
+## CSV simple
+
+Ver `samples/consulta_ejemplo.csv`.
+
+Columnas:
+
+```csv
+seccion,tipo,valor,unidad,detalle
+```
+
+Secciones válidas:
+
+- medicion
+- diagnostico
+- medicamento
+- indicacion
+- orden
+
+## Reglas
+
+- No se guarda nada sin confirmación.
+- Las mediciones con estado `confirmado` alimentan el dashboard.
+- IMC se puede guardar en JSON, pero no se grafica.
 - Medicamentos confirmados alimentan historial.
-- Órdenes médicas alimentan Exámenes pendientes.
-- Checklist: cita agendada, asistencia confirmada, resultado subido.
+- Órdenes de exámenes se guardan con checklist.
 
-No hay guardado automático sin confirmación.
-No hay claves API expuestas.
+## GitHub Pages
+
+Sube todo el contenido del ZIP a la raíz del repositorio:
+
+- index.html
+- styles.css
+- app.js
+- README.md
+- samples/
+

@@ -1,0 +1,83 @@
+{
+  "fechaConsulta": "2026-04-29",
+  "titulo": "Control pediátrico",
+  "profesional": "Patricio Vera Aguilera",
+  "especialidad": "Pediatría",
+  "centroMedico": "",
+  "mediciones": [
+    {
+      "tipo": "Peso",
+      "valor": 11.2,
+      "unidad": "kg",
+      "fecha": "2026-04-29",
+      "estado": "confirmado",
+      "confianza": "alta"
+    },
+    {
+      "tipo": "Talla",
+      "valor": 83,
+      "unidad": "cm",
+      "fecha": "2026-04-29",
+      "estado": "confirmado",
+      "confianza": "alta"
+    },
+    {
+      "tipo": "Circunferencia craneana",
+      "valor": 47.8,
+      "unidad": "cm",
+      "fecha": "2026-04-29",
+      "estado": "confirmado",
+      "confianza": "alta"
+    },
+    {
+      "tipo": "IMC",
+      "valor": 16.3,
+      "unidad": "",
+      "fecha": "2026-04-29",
+      "estado": "confirmado",
+      "confianza": "alta"
+    }
+  ],
+  "diagnosticos": [
+    {
+      "texto": "Resfriado común",
+      "estado": "confirmado",
+      "confianza": "alta"
+    }
+  ],
+  "medicamentos": [
+    {
+      "nombre": "Levorigotax gotas 20 ML",
+      "dosis": "11 gotas",
+      "frecuencia": "cada 24 horas",
+      "duracion": "2 semanas",
+      "via": "",
+      "observaciones": "",
+      "estado": "confirmado",
+      "confianza": "alta"
+    },
+    {
+      "nombre": "Broncotusilan 100MG/5ML",
+      "dosis": "2,5 ml",
+      "frecuencia": "cada 8 horas",
+      "duracion": "10 días",
+      "via": "oral",
+      "observaciones": "",
+      "estado": "confirmado",
+      "confianza": "alta"
+    }
+  ],
+  "indicacionesGenerales": [
+    "NAN 250 cc (2)",
+    "Acevit 8 gotas día",
+    "Comidas + Frutas",
+    "Fisiolim SOS"
+  ],
+  "proximoControl": {
+    "textoOriginal": "Control 2 meses",
+    "fechaEstimada": "2026-06-29",
+    "estado": "confirmado",
+    "confianza": "alta"
+  },
+  "ordenesExamenes": []
+}

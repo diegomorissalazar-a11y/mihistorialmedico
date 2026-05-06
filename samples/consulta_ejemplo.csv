@@ -1,0 +1,8 @@
+seccion,tipo,valor,unidad,detalle
+medicion,Peso,11.2,kg,
+medicion,Talla,83,cm,
+medicion,Circunferencia craneana,47.8,cm,
+diagnostico,Resfriado común,,,
+medicamento,Levorigotax gotas 20 ML,11 gotas,cada 24 horas,2 semanas
+medicamento,Broncotusilan 100MG/5ML,"2,5 ml",cada 8 horas,10 días
+indicacion,,,,Control 2 meses
