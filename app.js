@@ -1024,7 +1024,9 @@ window.tailwind = window.tailwind || {};
           if (m?.weight) parts.push(m.weight + ' kg');
           if (m?.height) parts.push(m.height + ' cm');
           if (m?.headCircumference) parts.push('Circ. craneana ' + m.headCircumference + ' cm');
-          if (m?.temperature) parts.push('T° ' + m.temperature);\n          if (m?.vitals) parts.push(m.vitals);\n          if (m?.glucose) parts.push('Glucosa ' + m.glucose + ' mg/dL');
+          if (m?.temperature) parts.push('T° ' + m.temperature);
+          if (m?.vitals) parts.push(m.vitals);
+          if (m?.glucose) parts.push('Glucosa ' + m.glucose + ' mg/dL');
           if (m?.bpSys || m?.bpDia) parts.push('PA ' + (m.bpSys || '--') + '/' + (m.bpDia || '--'));
           if (m?.cholesterol) parts.push('Colesterol ' + m.cholesterol + ' mg/dL');
           if (m?.weight && m?.height) parts.push('IMC: ' + this.calcIMC(m));
@@ -1129,7 +1131,7 @@ window.tailwind = window.tailwind || {};
       if (!('serviceWorker' in navigator)) return;
       window.addEventListener('load', () => {
         const swCode = `
-const CACHE = 'mihm-v2.5';
+const CACHE = 'mihm-v2.8-limpia';
 const ASSETS = ['./', './index.html', './styles.css', './app.js'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).catch(() => undefined)));
