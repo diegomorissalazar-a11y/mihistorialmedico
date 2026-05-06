@@ -112,14 +112,7 @@ window.tailwind = window.tailwind || {};
         documents: [],
         medTakenToday: [],
         reminders: [],
-        examOrders: [],
-        importador: {
-          raw: '',
-          parsed: null,
-          error: '',
-          mode: 'json',
-          fileName: ''
-        },
+        importador: { raw: '', parsed: null, error: '', mode: 'json', fileName: '' },
         controles: [],
         recetas: [],
         compras: [],
@@ -339,7 +332,6 @@ window.tailwind = window.tailwind || {};
             this.loadSection('mediciones'),
             this.loadSection('documentos'),
             this.loadSection('recordatorios'),
-            this.loadSection('ordenesExamenes'),
             this.loadSection('controles'),
             this.loadSection('recetas'),
             this.loadSection('compras'),
@@ -365,7 +357,7 @@ window.tailwind = window.tailwind || {};
           const mapKey = {
             examenes: 'examenes', medicamentos: 'medicamentos', consultas: 'consultas',
             vacunas: 'vacunas', alergias: 'alergias', cirugias: 'cirugias',
-            mediciones: 'mediciones', documentos: 'documents', recordatorios: 'reminders', ordenesExamenes: 'examOrders',
+            mediciones: 'mediciones', documentos: 'documents', recordatorios: 'reminders',
             controles: 'controles', recetas: 'recetas', compras: 'compras', tomas: 'treatmentLogs'
           };
           this[mapKey[section]] = data;
@@ -770,9 +762,7 @@ window.tailwind = window.tailwind || {};
 
         // ---- IMPORTADOR JSON / CSV ----
         importPlaceholder() {
-          if (this.importador.mode === 'csv') {
-            return 'seccion,tipo,valor,unidad,detalle\nmedicion,Peso,11.2,kg,\nmedicamento,Levorigotax,,,11 gotas cada 24 horas por 2 semanas';
-          }
+          if (this.importador.mode === 'csv') return 'seccion,tipo,valor,unidad,detalle\nmedicion,Peso,11.2,kg,\nmedicamento,Levorigotax,,,11 gotas cada 24 horas por 2 semanas';
           return JSON.stringify(this.sampleImportJSON(), null, 2);
         },
 
@@ -816,7 +806,6 @@ window.tailwind = window.tailwind || {};
           const ext = file.name.toLowerCase().split('.').pop();
           if (!['json','csv'].includes(ext)) { this.importador.error = 'Archivo inválido. Usa JSON o CSV.'; return; }
           this.importador.mode = ext;
-          this.importador.fileName = file.name;
           this.importador.raw = await file.text();
           this.importador.error = '';
           e.target.value = '';
@@ -851,23 +840,7 @@ window.tailwind = window.tailwind || {};
             })),
             indicacionesGenerales: obj.indicacionesGenerales || obj.indications || [],
             proximoControl: obj.proximoControl || { textoOriginal:'', fechaEstimada:'', estado:'pendiente_revision', confianza:'media' },
-            ordenesExamenes: (obj.ordenesExamenes || obj.examOrders || []).map(o => ({
-              nombreExamen: o.nombreExamen || o.name || '',
-              categoria: o.categoria || 'Laboratorio',
-              fechaEmision: o.fechaEmision || baseDate,
-              indicacion: o.indicacion || '',
-              prioridad: o.prioridad || 'normal',
-              citaAgendada: !!o.citaAgendada,
-              fechaCita: o.fechaCita || null,
-              lugar: o.lugar || '',
-              asistenciaConfirmada: !!o.asistenciaConfirmada,
-              resultadoSubido: !!o.resultadoSubido,
-              resultadoUrl: o.resultadoUrl || '',
-              fechaResultado: o.fechaResultado || null,
-              observaciones: o.observaciones || '',
-              estado: o.estado || 'pendiente_agendar',
-              confianza: o.confianza || 'media'
-            }))
+            ordenesExamenes: obj.ordenesExamenes || obj.examOrders || []
           };
         },
 
@@ -876,7 +849,8 @@ window.tailwind = window.tailwind || {};
           const out = this.sampleImportJSON();
           out.mediciones = []; out.medicamentos = []; out.diagnosticos = []; out.indicacionesGenerales = []; out.ordenesExamenes = [];
           for (const line of lines.slice(1)) {
-            const [seccion,tipo,valor,unidad,detalle] = line.split(',').map(x => (x || '').trim());
+            const parts = line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g) || [];
+            const [seccion,tipo,valor,unidad,detalle] = parts.map(x => String(x || '').replace(/^"|"$/g,'').trim());
             if (seccion === 'medicion') out.mediciones.push({ tipo, valor:Number(valor), unidad, fecha:out.fechaConsulta, estado:'confirmado', confianza:'media' });
             if (seccion === 'diagnostico') out.diagnosticos.push({ texto:detalle || tipo, estado:'confirmado', confianza:'media' });
             if (seccion === 'medicamento') out.medicamentos.push({ nombre:tipo, dosis:valor, frecuencia:unidad, duracion:detalle, estado:'confirmado', confianza:'media' });
@@ -890,7 +864,7 @@ window.tailwind = window.tailwind || {};
           try {
             this.importador.error = '';
             if (!this.importador.raw.trim()) { this.importador.error = 'Pega o carga un JSON/CSV primero.'; return; }
-            let obj = this.importador.mode === 'csv' ? this.parseSimpleCSV(this.importador.raw) : JSON.parse(this.importador.raw);
+            const obj = this.importador.mode === 'csv' ? this.parseSimpleCSV(this.importador.raw) : JSON.parse(this.importador.raw);
             this.importador.parsed = this.normalizeImportedData(obj);
             this.showToast('Datos importados para revisión ✓');
           } catch(e) {
@@ -908,15 +882,7 @@ window.tailwind = window.tailwind || {};
         },
 
         addImportExamOrder() {
-          const d = this.importador.parsed?.fechaConsulta || new Date().toISOString().split('T')[0];
-          this.importador.parsed.ordenesExamenes.push({ nombreExamen:'', categoria:'Laboratorio', fechaEmision:d, indicacion:'', prioridad:'normal', citaAgendada:false, fechaCita:null, lugar:'', asistenciaConfirmada:false, resultadoSubido:false, resultadoUrl:'', fechaResultado:null, observaciones:'', estado:'pendiente_agendar', confianza:'media' });
-        },
-
-        refreshImportedExamOrderStatus(o) {
-          if (o.resultadoSubido) o.estado = 'completado';
-          else if (o.asistenciaConfirmada) o.estado = 'resultado_pendiente';
-          else if (o.citaAgendada) o.estado = 'cita_agendada';
-          else o.estado = 'pendiente_agendar';
+          this.importador.parsed.ordenesExamenes.push({ nombreExamen:'', categoria:'Laboratorio', estado:'pendiente_agendar' });
         },
 
         importMeasurementKey(tipo) {
@@ -928,7 +894,6 @@ window.tailwind = window.tailwind || {};
           if (t.includes('sist')) return 'bpSys';
           if (t.includes('diast')) return 'bpDia';
           if (t.includes('colesterol')) return 'cholesterol';
-          if (t.includes('temperatura')) return 'temperature';
           return null;
         },
 
@@ -995,21 +960,6 @@ window.tailwind = window.tailwind || {};
               await localDB.entries.add({ ...data, id });
             }
             this.medicamentos.unshift({ ...data, id });
-          }
-
-          for (const o of p.ordenesExamenes.filter(o => o.nombreExamen)) {
-            this.refreshImportedExamOrderStatus(o);
-            const data = { ...o, category:'ordenesExamenes', profileId:this.currentProfile.id, consultaId, consultaTitulo:clean.title, date:o.fechaEmision || p.fechaConsulta, origen:'json' };
-            let id;
-            if (isFirebaseReady && this.currentUser) {
-              const ref = await this.profilePath().collection('ordenesExamenes').add({ ...data, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-              id = ref.id;
-            } else {
-              id = Date.now().toString() + Math.random().toString(16).slice(2);
-              await localDB.entries.add({ ...data, id });
-            }
-            if (!this.examOrders) this.examOrders = [];
-            this.examOrders.unshift({ ...data, id });
           }
 
           this.showToast('Consulta importada guardada ✓');
@@ -1415,7 +1365,7 @@ window.tailwind = window.tailwind || {};
       if (!('serviceWorker' in navigator)) return;
       window.addEventListener('load', () => {
         const swCode = `
-const CACHE = 'mihm-v2.7';
+const CACHE = 'mihm-v2.7.1';
 const ASSETS = ['./', './index.html', './styles.css', './app.js'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).catch(() => undefined)));

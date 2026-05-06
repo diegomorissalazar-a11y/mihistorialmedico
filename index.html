@@ -56,7 +56,7 @@
         </div>
         <h1 class="text-2xl font-bold text-slate-800 dark:text-white">MiHistorial<span class="text-sky-500">Médico</span></h1>
         <p class="text-slate-500 dark:text-slate-400 text-sm mt-1">Tu historial de salud de por vida</p>
-        <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Versión v2.7</p>
+        <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Versión v2.7.1</p>
       </div>
 
       <!-- Form -->
@@ -161,7 +161,7 @@
 
       <!-- Footer -->
       <div class="p-3 border-t border-slate-100 dark:border-slate-700 space-y-0.5">
-        <div class="px-4 pb-2 text-[11px] text-slate-400 dark:text-slate-500">MiHistorialMédico v2.7</div>
+        <div class="px-4 pb-2 text-[11px] text-slate-400 dark:text-slate-500">MiHistorialMédico v2.7.1</div>
         <button class="sidebar-link w-full" @click="exportCSV()">📤 Exportar CSV</button>
         <button class="sidebar-link w-full" @click="darkMode = !darkMode">
           <span x-text="darkMode ? '☀️' : '🌙'"></span>
@@ -825,16 +825,14 @@
 
         <!-- ===== IMPORTADOR JSON / CSV ===== -->
         <div x-show="activeSection === 'importador'" class="animate-fade-in space-y-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <h2 class="text-lg font-bold">📥 Importar consulta desde JSON/CSV</h2>
-              <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Pega el JSON que te entregue ChatGPT desde una foto, revísalo y guárdalo en el historial.</p>
-            </div>
+          <div>
+            <h2 class="text-lg font-bold">📥 Importar consulta desde JSON/CSV</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">Pega el JSON estructurado desde una foto, revísalo y guárdalo.</p>
           </div>
 
           <div class="card space-y-4">
             <div class="p-4 rounded-2xl bg-sky-50 dark:bg-sky-900/20 text-sky-800 dark:text-sky-200 text-sm">
-              <strong>Flujo recomendado:</strong> me pasas las fotos por chat, yo estructuro los datos en JSON/CSV y luego lo cargas aquí. No se guarda nada hasta que confirmes.
+              <strong>Flujo:</strong> me pasas las fotos por chat, yo te devuelvo JSON/CSV y lo cargas aquí. No se guarda nada sin revisión.
             </div>
 
             <div class="flex rounded-xl bg-slate-100 dark:bg-slate-700 p-1">
@@ -842,15 +840,8 @@
               <button class="flex-1 py-2 rounded-lg text-sm font-semibold transition-all" :class="importador.mode === 'csv' ? 'bg-white dark:bg-slate-600 shadow text-sky-600' : 'text-slate-500'" @click="importador.mode='csv'">CSV simple</button>
             </div>
 
-            <div>
-              <label class="label">Cargar archivo JSON/CSV</label>
-              <input type="file" class="input text-xs" accept=".json,.csv,text/csv,application/json" @change="handleImportFile($event)" />
-            </div>
-
-            <div>
-              <label class="label" x-text="importador.mode === 'json' ? 'Pegar JSON' : 'Pegar CSV simple'"></label>
-              <textarea class="input font-mono text-xs" rows="12" x-model="importador.raw" :placeholder="importPlaceholder()"></textarea>
-            </div>
+            <input type="file" class="input text-xs" accept=".json,.csv,text/csv,application/json" @change="handleImportFile($event)" />
+            <textarea class="input font-mono text-xs" rows="12" x-model="importador.raw" :placeholder="importPlaceholder()"></textarea>
 
             <div x-show="importador.error" class="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm" x-text="importador.error"></div>
 
@@ -862,21 +853,17 @@
           </div>
 
           <div class="card space-y-4" x-show="importador.parsed">
-            <div>
-              <h3 class="font-bold text-lg">Revisión antes de guardar</h3>
-              <p class="text-sm text-slate-500">Puedes editar cualquier campo. Solo se guardará cuando presiones “Guardar consulta importada”.</p>
-            </div>
+            <h3 class="font-bold text-lg">Revisión antes de guardar</h3>
 
             <div class="grid md:grid-cols-2 gap-3">
               <div><label class="label">Fecha consulta</label><input type="date" class="input" x-model="importador.parsed.fechaConsulta" /></div>
               <div><label class="label">Título</label><input class="input" x-model="importador.parsed.titulo" /></div>
               <div><label class="label">Profesional</label><input class="input" x-model="importador.parsed.profesional" /></div>
               <div><label class="label">Especialidad</label><input class="input" x-model="importador.parsed.especialidad" /></div>
-              <div class="md:col-span-2"><label class="label">Centro médico</label><input class="input" x-model="importador.parsed.centroMedico" /></div>
             </div>
 
             <details class="card p-4" open>
-              <summary class="font-semibold cursor-pointer">1. Examen físico / mediciones</summary>
+              <summary class="font-semibold cursor-pointer">1. Mediciones</summary>
               <div class="mt-3 space-y-2">
                 <template x-for="(m, idx) in importador.parsed.mediciones" :key="idx">
                   <div class="grid grid-cols-2 md:grid-cols-6 gap-2 items-center">
@@ -893,51 +880,41 @@
             </details>
 
             <details class="card p-4" open>
-              <summary class="font-semibold cursor-pointer">2. Diagnóstico y medicamentos</summary>
+              <summary class="font-semibold cursor-pointer">2. Diagnósticos y medicamentos</summary>
               <div class="mt-3 space-y-4">
-                <div>
-                  <h4 class="text-sm font-semibold mb-2">Diagnósticos</h4>
-                  <template x-for="(d, idx) in importador.parsed.diagnosticos" :key="idx">
-                    <div class="flex gap-2 mb-2">
-                      <input class="input flex-1" x-model="d.texto" />
-                      <select class="input w-44" x-model="d.estado"><option>confirmado</option><option>pendiente_revision</option><option>revisar</option></select>
-                      <button class="btn-danger" @click="importador.parsed.diagnosticos.splice(idx,1)">Eliminar</button>
+                <template x-for="(d, idx) in importador.parsed.diagnosticos" :key="'d'+idx">
+                  <div class="flex gap-2 mb-2">
+                    <input class="input flex-1" x-model="d.texto" />
+                    <select class="input w-44" x-model="d.estado"><option>confirmado</option><option>pendiente_revision</option><option>revisar</option></select>
+                    <button class="btn-danger" @click="importador.parsed.diagnosticos.splice(idx,1)">Eliminar</button>
+                  </div>
+                </template>
+                <template x-for="(m, idx) in importador.parsed.medicamentos" :key="'m'+idx">
+                  <div class="p-3 rounded-xl border border-slate-200 dark:border-slate-700 mb-2 space-y-2">
+                    <div class="grid md:grid-cols-3 gap-2">
+                      <input class="input" x-model="m.nombre" placeholder="Nombre" />
+                      <input class="input" x-model="m.dosis" placeholder="Dosis" />
+                      <input class="input" x-model="m.frecuencia" placeholder="Frecuencia" />
+                      <input class="input" x-model="m.duracion" placeholder="Duración" />
+                      <input class="input" x-model="m.via" placeholder="Vía" />
+                      <select class="input" x-model="m.estado"><option>confirmado</option><option>pendiente_revision</option><option>revisar</option></select>
                     </div>
-                  </template>
-                </div>
-
-                <div>
-                  <h4 class="text-sm font-semibold mb-2">Medicamentos</h4>
-                  <template x-for="(m, idx) in importador.parsed.medicamentos" :key="idx">
-                    <div class="p-3 rounded-xl border border-slate-200 dark:border-slate-700 mb-2 space-y-2">
-                      <div class="grid md:grid-cols-3 gap-2">
-                        <input class="input" x-model="m.nombre" placeholder="Nombre" />
-                        <input class="input" x-model="m.dosis" placeholder="Dosis" />
-                        <input class="input" x-model="m.frecuencia" placeholder="Frecuencia" />
-                        <input class="input" x-model="m.duracion" placeholder="Duración" />
-                        <input class="input" x-model="m.via" placeholder="Vía" />
-                        <select class="input" x-model="m.estado"><option>confirmado</option><option>pendiente_revision</option><option>revisar</option></select>
-                      </div>
-                      <input class="input" x-model="m.observaciones" placeholder="Observaciones" />
-                      <button class="btn-danger text-xs" @click="importador.parsed.medicamentos.splice(idx,1)">Eliminar medicamento</button>
-                    </div>
-                  </template>
-                  <button class="btn-secondary" @click="addImportMedication()">+ Agregar medicamento</button>
-                </div>
+                    <button class="btn-danger text-xs" @click="importador.parsed.medicamentos.splice(idx,1)">Eliminar medicamento</button>
+                  </div>
+                </template>
+                <button class="btn-secondary" @click="addImportMedication()">+ Agregar medicamento</button>
               </div>
             </details>
 
             <details class="card p-4" open>
               <summary class="font-semibold cursor-pointer">3. Indicaciones generales</summary>
-              <div class="mt-3 space-y-2">
-                <template x-for="(i, idx) in importador.parsed.indicacionesGenerales" :key="idx">
-                  <div class="flex gap-2">
-                    <input class="input flex-1" x-model="importador.parsed.indicacionesGenerales[idx]" />
-                    <button class="btn-danger" @click="importador.parsed.indicacionesGenerales.splice(idx,1)">Eliminar</button>
-                  </div>
-                </template>
-                <button class="btn-secondary" @click="importador.parsed.indicacionesGenerales.push('')">+ Agregar indicación</button>
-              </div>
+              <template x-for="(i, idx) in importador.parsed.indicacionesGenerales" :key="idx">
+                <div class="flex gap-2 mt-2">
+                  <input class="input flex-1" x-model="importador.parsed.indicacionesGenerales[idx]" />
+                  <button class="btn-danger" @click="importador.parsed.indicacionesGenerales.splice(idx,1)">Eliminar</button>
+                </div>
+              </template>
+              <button class="btn-secondary mt-3" @click="importador.parsed.indicacionesGenerales.push('')">+ Agregar indicación</button>
             </details>
 
             <details class="card p-4" open>
@@ -950,29 +927,17 @@
 
             <details class="card p-4" open>
               <summary class="font-semibold cursor-pointer">5. Órdenes médicas de exámenes</summary>
-              <div class="mt-3 space-y-2">
-                <template x-for="(o, idx) in importador.parsed.ordenesExamenes" :key="idx">
-                  <div class="p-3 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
-                    <div class="grid md:grid-cols-3 gap-2">
-                      <input class="input" x-model="o.nombreExamen" placeholder="Nombre examen" />
-                      <select class="input" x-model="o.categoria"><option>Laboratorio</option><option>Imagenología</option><option>Procedimiento</option><option>Derivación</option><option>Otro</option></select>
-                      <select class="input" x-model="o.estado"><option>pendiente_agendar</option><option>cita_agendada</option><option>resultado_pendiente</option><option>completado</option></select>
-                    </div>
-                    <input class="input" x-model="o.indicacion" placeholder="Indicación" />
-                    <div class="grid md:grid-cols-3 gap-2 text-sm">
-                      <label><input type="checkbox" x-model="o.citaAgendada" @change="refreshImportedExamOrderStatus(o)" /> Cita agendada</label>
-                      <label><input type="checkbox" x-model="o.asistenciaConfirmada" @change="refreshImportedExamOrderStatus(o)" /> Asistencia confirmada</label>
-                      <label><input type="checkbox" x-model="o.resultadoSubido" @change="refreshImportedExamOrderStatus(o)" /> Resultado subido</label>
-                    </div>
-                    <div class="grid md:grid-cols-2 gap-2">
-                      <input type="date" class="input" x-model="o.fechaCita" />
-                      <input class="input" x-model="o.lugar" placeholder="Lugar" />
-                    </div>
-                    <button class="btn-danger text-xs" @click="importador.parsed.ordenesExamenes.splice(idx,1)">Eliminar orden</button>
+              <template x-for="(o, idx) in importador.parsed.ordenesExamenes" :key="idx">
+                <div class="p-3 rounded-xl border border-slate-200 dark:border-slate-700 mt-2 space-y-2">
+                  <div class="grid md:grid-cols-3 gap-2">
+                    <input class="input" x-model="o.nombreExamen" placeholder="Nombre examen" />
+                    <select class="input" x-model="o.categoria"><option>Laboratorio</option><option>Imagenología</option><option>Procedimiento</option><option>Derivación</option><option>Otro</option></select>
+                    <select class="input" x-model="o.estado"><option>pendiente_agendar</option><option>cita_agendada</option><option>resultado_pendiente</option><option>completado</option></select>
                   </div>
-                </template>
-                <button class="btn-secondary" @click="addImportExamOrder()">+ Agregar orden</button>
-              </div>
+                  <button class="btn-danger text-xs" @click="importador.parsed.ordenesExamenes.splice(idx,1)">Eliminar orden</button>
+                </div>
+              </template>
+              <button class="btn-secondary mt-3" @click="addImportExamOrder()">+ Agregar orden</button>
             </details>
 
             <div class="grid md:grid-cols-3 gap-2">
