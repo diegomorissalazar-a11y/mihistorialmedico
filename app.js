@@ -112,7 +112,6 @@ window.tailwind = window.tailwind || {};
         documents: [],
         medTakenToday: [],
         reminders: [],
-        importador: { raw: '', parsed: null, error: '', mode: 'json', fileName: '' },
         controles: [],
         recetas: [],
         compras: [],
@@ -135,7 +134,6 @@ window.tailwind = window.tailwind || {};
           { id: 'examenes', label: 'Exámenes', icon: '🔬', badge: null },
           { id: 'medicamentos', label: 'Medicamentos', icon: '💊', badge: null },
           { id: 'consultas', label: 'Consultas', icon: '🏥', badge: null },
-          { id: 'importador', label: 'Importar JSON/CSV', icon: '📥', badge: null },
           { id: 'vacunas', label: 'Vacunas', icon: '💉', badge: null },
           { id: 'calendario', label: 'Calendario', icon: '📅', badge: null },
           { id: 'recetas', label: 'Recetas', icon: '🧾', badge: null },
@@ -151,7 +149,6 @@ window.tailwind = window.tailwind || {};
           { id: 'medicamentos', label: 'Meds', icon: '💊' },
           { id: 'calendario', label: 'Agenda', icon: '📅' },
           { id: 'consultas', label: 'Consultas', icon: '🏥' },
-          { id: 'importador', label: 'Importar', icon: '📥' },
           { id: 'estadisticas', label: 'Stats', icon: '📊' },
         ],
 
@@ -759,239 +756,6 @@ window.tailwind = window.tailwind || {};
           this.form = { ...this.form, ...(templates[type] || {}) };
         },
 
-
-        // ---- IMPORTADOR JSON / CSV ----
-        importPlaceholder() {
-          if (this.importador.mode === 'csv') return 'seccion,tipo,valor,unidad,detalle\nmedicion,Peso,11.2,kg,\nmedicamento,Levorigotax,,,11 gotas cada 24 horas por 2 semanas';
-          return JSON.stringify(this.sampleImportJSON(), null, 2);
-        },
-
-        sampleImportJSON() {
-          return {
-            fechaConsulta: '2026-04-29',
-            titulo: 'Control pediátrico',
-            profesional: 'Patricio Vera Aguilera',
-            especialidad: 'Pediatría',
-            centroMedico: '',
-            mediciones: [
-              { tipo:'Peso', valor:11.2, unidad:'kg', fecha:'2026-04-29', estado:'confirmado', confianza:'alta' },
-              { tipo:'Talla', valor:83, unidad:'cm', fecha:'2026-04-29', estado:'confirmado', confianza:'alta' },
-              { tipo:'Circunferencia craneana', valor:47.8, unidad:'cm', fecha:'2026-04-29', estado:'confirmado', confianza:'alta' },
-              { tipo:'IMC', valor:16.3, unidad:'', fecha:'2026-04-29', estado:'confirmado', confianza:'alta' }
-            ],
-            diagnosticos: [{ texto:'Resfriado común', estado:'confirmado', confianza:'alta' }],
-            medicamentos: [
-              { nombre:'Levorigotax gotas 20 ML', dosis:'11 gotas', frecuencia:'cada 24 horas', duracion:'2 semanas', via:'', observaciones:'', estado:'confirmado', confianza:'alta' },
-              { nombre:'Broncotusilan 100MG/5ML', dosis:'2,5 ml', frecuencia:'cada 8 horas', duracion:'10 días', via:'oral', observaciones:'', estado:'confirmado', confianza:'alta' }
-            ],
-            indicacionesGenerales: ['NAN 250 cc (2)', 'Acevit 8 gotas día', 'Comidas + Frutas', 'Fisiolim SOS'],
-            proximoControl: { textoOriginal:'Control 2 meses', fechaEstimada:'2026-06-29', estado:'confirmado', confianza:'alta' },
-            ordenesExamenes: []
-          };
-        },
-
-        loadImportExample() {
-          this.importador.mode = 'json';
-          this.importador.raw = JSON.stringify(this.sampleImportJSON(), null, 2);
-          this.importador.error = '';
-        },
-
-        resetImportador() {
-          this.importador = { raw:'', parsed:null, error:'', mode:'json', fileName:'' };
-        },
-
-        async handleImportFile(e) {
-          const file = e.target.files?.[0];
-          if (!file) return;
-          const ext = file.name.toLowerCase().split('.').pop();
-          if (!['json','csv'].includes(ext)) { this.importador.error = 'Archivo inválido. Usa JSON o CSV.'; return; }
-          this.importador.mode = ext;
-          this.importador.raw = await file.text();
-          this.importador.error = '';
-          e.target.value = '';
-        },
-
-        normalizeImportedData(obj) {
-          const baseDate = obj.fechaConsulta || obj.date || new Date().toISOString().split('T')[0];
-          return {
-            fechaConsulta: baseDate,
-            titulo: obj.titulo || obj.title || 'Consulta importada',
-            profesional: obj.profesional || obj.doctor || '',
-            especialidad: obj.especialidad || obj.specialty || '',
-            centroMedico: obj.centroMedico || obj.hospital || '',
-            mediciones: (obj.mediciones || obj.measurements || obj.examenFisico?.mediciones || []).map(m => ({
-              tipo: m.tipo || m.type || '',
-              valor: m.valor ?? m.value ?? '',
-              unidad: m.unidad || m.unit || '',
-              fecha: m.fecha || m.date || baseDate,
-              estado: m.estado || 'pendiente_revision',
-              confianza: m.confianza || 'media'
-            })),
-            diagnosticos: (obj.diagnosticos || obj.diagnosis || []).map(d => typeof d === 'string' ? { texto:d, estado:'pendiente_revision', confianza:'media' } : { texto:d.texto || d.text || '', estado:d.estado || 'pendiente_revision', confianza:d.confianza || 'media' }),
-            medicamentos: (obj.medicamentos || obj.medications || []).map(m => ({
-              nombre: m.nombre || m.name || '',
-              dosis: m.dosis || m.dose || '',
-              frecuencia: m.frecuencia || m.frequency || '',
-              duracion: m.duracion || m.duration || '',
-              via: m.via || '',
-              observaciones: m.observaciones || m.notes || '',
-              estado: m.estado || 'pendiente_revision',
-              confianza: m.confianza || 'media'
-            })),
-            indicacionesGenerales: obj.indicacionesGenerales || obj.indications || [],
-            proximoControl: obj.proximoControl || { textoOriginal:'', fechaEstimada:'', estado:'pendiente_revision', confianza:'media' },
-            ordenesExamenes: obj.ordenesExamenes || obj.examOrders || []
-          };
-        },
-
-        parseSimpleCSV(text) {
-          const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-          const out = this.sampleImportJSON();
-          out.mediciones = []; out.medicamentos = []; out.diagnosticos = []; out.indicacionesGenerales = []; out.ordenesExamenes = [];
-          for (const line of lines.slice(1)) {
-            const parts = line.match(/(".*?"|[^",]+)(?=\s*,|\s*$)/g) || [];
-            const [seccion,tipo,valor,unidad,detalle] = parts.map(x => String(x || '').replace(/^"|"$/g,'').trim());
-            if (seccion === 'medicion') out.mediciones.push({ tipo, valor:Number(valor), unidad, fecha:out.fechaConsulta, estado:'confirmado', confianza:'media' });
-            if (seccion === 'diagnostico') out.diagnosticos.push({ texto:detalle || tipo, estado:'confirmado', confianza:'media' });
-            if (seccion === 'medicamento') out.medicamentos.push({ nombre:tipo, dosis:valor, frecuencia:unidad, duracion:detalle, estado:'confirmado', confianza:'media' });
-            if (seccion === 'indicacion') out.indicacionesGenerales.push(detalle || tipo);
-            if (seccion === 'orden') out.ordenesExamenes.push({ nombreExamen:tipo, categoria:unidad || 'Laboratorio', indicacion:detalle, estado:'pendiente_agendar' });
-          }
-          return out;
-        },
-
-        parseImportData() {
-          try {
-            this.importador.error = '';
-            if (!this.importador.raw.trim()) { this.importador.error = 'Pega o carga un JSON/CSV primero.'; return; }
-            const obj = this.importador.mode === 'csv' ? this.parseSimpleCSV(this.importador.raw) : JSON.parse(this.importador.raw);
-            this.importador.parsed = this.normalizeImportedData(obj);
-            this.showToast('Datos importados para revisión ✓');
-          } catch(e) {
-            this.importador.error = 'No se pudo leer el archivo. Revisa que sea JSON válido o CSV simple.';
-          }
-        },
-
-        addImportMeasurement() {
-          const d = this.importador.parsed?.fechaConsulta || new Date().toISOString().split('T')[0];
-          this.importador.parsed.mediciones.push({ tipo:'', valor:'', unidad:'', fecha:d, estado:'pendiente_revision', confianza:'media' });
-        },
-
-        addImportMedication() {
-          this.importador.parsed.medicamentos.push({ nombre:'', dosis:'', frecuencia:'', duracion:'', via:'', observaciones:'', estado:'pendiente_revision', confianza:'media' });
-        },
-
-        addImportExamOrder() {
-          this.importador.parsed.ordenesExamenes.push({ nombreExamen:'', categoria:'Laboratorio', estado:'pendiente_agendar' });
-        },
-
-        importMeasurementKey(tipo) {
-          const t = String(tipo || '').toLowerCase();
-          if (t.includes('peso')) return 'weight';
-          if (t.includes('talla') || t.includes('estatura')) return 'height';
-          if (t.includes('crane')) return 'headCircumference';
-          if (t.includes('gluc')) return 'glucose';
-          if (t.includes('sist')) return 'bpSys';
-          if (t.includes('diast')) return 'bpDia';
-          if (t.includes('colesterol')) return 'cholesterol';
-          return null;
-        },
-
-        async saveImportedConsultation() {
-          const p = this.importador.parsed;
-          if (!p) return;
-          if (!confirm('¿Guardar consulta importada y datos confirmados?')) return;
-
-          const confirmedDiagnoses = p.diagnosticos.filter(d => d.estado === 'confirmado').map(d => d.texto).filter(Boolean);
-          const confirmedMeds = p.medicamentos.filter(m => m.estado === 'confirmado' && m.nombre);
-          const confirmedMeasurements = p.mediciones.filter(m => m.estado === 'confirmado' && m.tipo && m.valor !== '');
-          const clean = {
-            category:'consulta',
-            profileId:this.currentProfile.id,
-            title:p.titulo || 'Consulta importada',
-            date:p.fechaConsulta,
-            doctor:p.profesional,
-            specialty:p.especialidad,
-            hospital:p.centroMedico,
-            diagnosis:confirmedDiagnoses.join('; '),
-            medicationsText:confirmedMeds.map(m => [m.nombre,m.dosis,m.frecuencia,m.duracion].filter(Boolean).join(' | ')).join('\n'),
-            generalInstructions:p.indicacionesGenerales.join('\n'),
-            nextControlDate:p.proximoControl?.fechaEstimada || '',
-            nextControlText:p.proximoControl?.textoOriginal || '',
-            origen:'json'
-          };
-
-          let consultaId;
-          if (isFirebaseReady && this.currentUser) {
-            const ref = await this.profilePath().collection('consultas').add({ ...clean, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-            consultaId = ref.id;
-          } else {
-            consultaId = Date.now().toString();
-            await localDB.entries.add({ ...clean, id:consultaId });
-          }
-          this.consultas.unshift({ ...clean, id:consultaId });
-
-          for (const m of confirmedMeasurements) {
-            if (String(m.tipo).toLowerCase().includes('imc')) continue;
-            const key = this.importMeasurementKey(m.tipo);
-            const data = { category:'medicion', profileId:this.currentProfile.id, date:m.fecha || p.fechaConsulta, title:'Medición desde JSON', name:'Medición desde JSON', relatedControlId:consultaId, relatedControlTitle:clean.title, origen:'json' };
-            if (key) data[key] = Number(m.valor); else data.notes = `${m.tipo}: ${m.valor} ${m.unidad || ''}`;
-            let id;
-            if (isFirebaseReady && this.currentUser) {
-              const ref = await this.profilePath().collection('mediciones').add({ ...data, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-              id = ref.id;
-            } else {
-              id = Date.now().toString() + Math.random().toString(16).slice(2);
-              await localDB.entries.add({ ...data, id });
-            }
-            this.mediciones.unshift({ ...data, id });
-          }
-
-          for (const m of confirmedMeds) {
-            const days = this.parseDurationDays(m.duracion || '');
-            const data = { category:'medicamento', profileId:this.currentProfile.id, name:m.nombre, dose:m.dosis, frequency:m.frecuencia || 'Según indicación', treatmentDays:days, durationDays:days, startDate:p.fechaConsulta, date:p.fechaConsulta, active:true, doctor:p.profesional || '', linkedConsultationId:consultaId, linkedConsultationTitle:clean.title, notes:m.observaciones || '', origen:'json' };
-            if (days) data.estimatedEndDate = this.addDaysToDate(data.startDate, days);
-            let id;
-            if (isFirebaseReady && this.currentUser) {
-              const ref = await this.profilePath().collection('medicamentos').add({ ...data, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-              id = ref.id;
-            } else {
-              id = Date.now().toString() + Math.random().toString(16).slice(2);
-              await localDB.entries.add({ ...data, id });
-            }
-            this.medicamentos.unshift({ ...data, id });
-          }
-
-          this.showToast('Consulta importada guardada ✓');
-          this.resetImportador();
-          this.activeSection = 'consultas';
-        },
-
-        downloadImportJSON() {
-          if (!this.importador.parsed) return;
-          const blob = new Blob([JSON.stringify(this.importador.parsed, null, 2)], { type:'application/json;charset=utf-8' });
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = 'consulta_importada_revisada.json';
-          a.click();
-        },
-
-        downloadImportCSV() {
-          if (!this.importador.parsed) return;
-          const rows = [['seccion','tipo','valor','unidad','detalle']];
-          this.importador.parsed.mediciones.forEach(m => rows.push(['medicion',m.tipo,m.valor,m.unidad,'']));
-          this.importador.parsed.diagnosticos.forEach(d => rows.push(['diagnostico',d.texto,'','','']));
-          this.importador.parsed.medicamentos.forEach(m => rows.push(['medicamento',m.nombre,m.dosis,m.frecuencia,m.duracion]));
-          this.importador.parsed.indicacionesGenerales.forEach(i => rows.push(['indicacion','','','',i]));
-          this.importador.parsed.ordenesExamenes.forEach(o => rows.push(['orden',o.nombreExamen,'',o.categoria,o.indicacion]));
-          const csv = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
-          const blob = new Blob(['\uFEFF' + csv], { type:'text/csv;charset=utf-8;' });
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = 'consulta_importada_revisada.csv';
-          a.click();
-        },
-
         // ---- FILE UPLOAD ----
         async handleFileDrop(e) {
           const files = Array.from(e.dataTransfer.files);
@@ -1365,7 +1129,7 @@ window.tailwind = window.tailwind || {};
       if (!('serviceWorker' in navigator)) return;
       window.addEventListener('load', () => {
         const swCode = `
-const CACHE = 'mihm-v2.7.1';
+const CACHE = 'mihm-v2.5';
 const ASSETS = ['./', './index.html', './styles.css', './app.js'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).catch(() => undefined)));
