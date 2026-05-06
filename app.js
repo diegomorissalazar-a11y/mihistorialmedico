@@ -112,6 +112,8 @@ window.tailwind = window.tailwind || {};
         documents: [],
         medTakenToday: [],
         reminders: [],
+        examOrders: [],
+        photoUpload: { file: null, previewUrl: '', processing: false, error: '', ocrText: '', showOcr: false, parsed: null },
         controles: [],
         recetas: [],
         compras: [],
@@ -134,6 +136,8 @@ window.tailwind = window.tailwind || {};
           { id: 'examenes', label: 'Exámenes', icon: '🔬', badge: null },
           { id: 'medicamentos', label: 'Medicamentos', icon: '💊', badge: null },
           { id: 'consultas', label: 'Consultas', icon: '🏥', badge: null },
+          { id: 'fotoConsulta', label: 'Carga desde foto', icon: '📷', badge: null },
+          { id: 'examenesPendientes', label: 'Exámenes pendientes', icon: '🧾', badge: null },
           { id: 'vacunas', label: 'Vacunas', icon: '💉', badge: null },
           { id: 'calendario', label: 'Calendario', icon: '📅', badge: null },
           { id: 'recetas', label: 'Recetas', icon: '🧾', badge: null },
@@ -149,6 +153,7 @@ window.tailwind = window.tailwind || {};
           { id: 'medicamentos', label: 'Meds', icon: '💊' },
           { id: 'calendario', label: 'Agenda', icon: '📅' },
           { id: 'consultas', label: 'Consultas', icon: '🏥' },
+          { id: 'fotoConsulta', label: 'Foto', icon: '📷' },
           { id: 'estadisticas', label: 'Stats', icon: '📊' },
         ],
 
@@ -354,7 +359,7 @@ window.tailwind = window.tailwind || {};
           const mapKey = {
             examenes: 'examenes', medicamentos: 'medicamentos', consultas: 'consultas',
             vacunas: 'vacunas', alergias: 'alergias', cirugias: 'cirugias',
-            mediciones: 'mediciones', documentos: 'documents', recordatorios: 'reminders',
+            mediciones: 'mediciones', documentos: 'documents', recordatorios: 'reminders', ordenesExamenes: 'examOrders',
             controles: 'controles', recetas: 'recetas', compras: 'compras', tomas: 'treatmentLogs'
           };
           this[mapKey[section]] = data;
@@ -756,6 +761,145 @@ window.tailwind = window.tailwind || {};
           this.form = { ...this.form, ...(templates[type] || {}) };
         },
 
+
+        // ---- MEDICAL PHOTO MOCK / REVIEW ----
+        validateMedicalPhoto(file) {
+          const allowed = ['image/jpeg','image/jpg','image/png','image/webp'];
+          const maxMb = 8;
+          if (!file) return 'No se seleccionó imagen';
+          if (!allowed.includes(file.type)) return 'Formato inválido. Usa JPG, PNG o WEBP.';
+          if (file.size > maxMb * 1024 * 1024) return 'Imagen demasiado pesada. Máximo ' + maxMb + ' MB.';
+          return '';
+        },
+        handleMedicalPhotoInput(e) { const file = e.target.files?.[0]; this.setMedicalPhoto(file); e.target.value = ''; },
+        handleMedicalPhotoDrop(e) { const file = Array.from(e.dataTransfer.files || [])[0]; this.setMedicalPhoto(file); },
+        setMedicalPhoto(file) {
+          const err = this.validateMedicalPhoto(file);
+          if (err) { this.photoUpload.error = err; return; }
+          this.photoUpload.file = file; this.photoUpload.error = ''; this.photoUpload.parsed = null; this.photoUpload.ocrText = '';
+          if (this.photoUpload.previewUrl) URL.revokeObjectURL(this.photoUpload.previewUrl);
+          this.photoUpload.previewUrl = URL.createObjectURL(file);
+        },
+        resetMedicalPhoto() {
+          if (this.photoUpload.previewUrl) URL.revokeObjectURL(this.photoUpload.previewUrl);
+          this.photoUpload = { file: null, previewUrl: '', processing: false, error: '', ocrText: '', showOcr: false, parsed: null };
+        },
+        mockMedicalOCRText() {
+          return `DETALLE ATENCION AMBULATORIA
+Fecha Atención: 29/04/2026 09:00
+Profesional: Patricio Vera Aguilera
+Especialidad: Pediatría
+Examen Físico: Peso 11.2 kg, Talla 83 cm, Circ. Craneana 47.8 cm, IMC 16.3
+Diagnóstico: Resfriado común
+Medicamentos: Levorigotax 11 gotas cada 24 horas por 2 semanas; Broncotusilan 2,5 ml cada 8 horas por 10 días
+Indicaciones: NAN 250 cc, Acevit 8 gotas día, Comidas + Frutas, Control 2 meses
+Órdenes: Hemograma completo, PCR`;
+        },
+        processMedicalPhotoMock() {
+          if (!this.photoUpload.file) { this.photoUpload.error = 'Primero selecciona una imagen.'; return; }
+          this.photoUpload.processing = true;
+          setTimeout(() => {
+            const baseDate = '2026-04-29';
+            this.photoUpload.ocrText = this.mockMedicalOCRText();
+            this.photoUpload.parsed = {
+              fechaConsulta: baseDate, titulo: 'Control médico desde foto', origen: 'foto', profesional: 'Patricio Vera Aguilera', especialidad: 'Pediatría', centroMedico: '', textoOCR: this.photoUpload.ocrText,
+              examenFisico: { mediciones: [
+                { tipo:'Peso', valor:11.2, unidad:'kg', fecha:baseDate, confianza:'alta', estado:'pendiente_revision', origen:'foto' },
+                { tipo:'Talla', valor:83, unidad:'cm', fecha:baseDate, confianza:'alta', estado:'pendiente_revision', origen:'foto' },
+                { tipo:'Circunferencia craneana', valor:47.8, unidad:'cm', fecha:baseDate, confianza:'alta', estado:'pendiente_revision', origen:'foto' },
+                { tipo:'IMC', valor:16.3, unidad:'', fecha:baseDate, confianza:'alta', estado:'pendiente_revision', origen:'foto' }
+              ], observaciones: 'Revisar contra documento original.' },
+              diagnosticos: [{ texto:'Resfriado común', confianza:'alta', estado:'pendiente_revision', origen:'foto' }],
+              medicamentos: [
+                { nombre:'Levorigotax gotas 20 ML', dosis:'11 gotas', frecuencia:'cada 24 horas', duracion:'2 semanas', via:'', observaciones:'', confianza:'alta', estado:'pendiente_revision', origen:'foto' },
+                { nombre:'Broncotusilan 100MG/5ML', dosis:'2,5 ml', frecuencia:'cada 8 horas', duracion:'10 días', via:'oral', observaciones:'', confianza:'alta', estado:'pendiente_revision', origen:'foto' }
+              ],
+              indicacionesGenerales: ['NAN 250 cc (2)', 'Acevit 8 gotas día', 'Comidas + Frutas', 'Fisiolim SOS'],
+              proximoControl: { textoOriginal:'Control 2 meses', fechaEstimada:this.addMonthsToDate(baseDate, 2), motivo:'Seguimiento', estado:'pendiente_revision', confianza:'alta' },
+              ordenesExamenes: [
+                { nombreExamen:'Hemograma completo', categoria:'Laboratorio', fechaEmision:baseDate, indicacion:'', prioridad:'normal', citaAgendada:false, fechaCita:null, lugar:'', asistenciaConfirmada:false, resultadoSubido:false, resultadoUrl:'', fechaResultado:null, observaciones:'', confianza:'media', estado:'pendiente_agendar', origen:'foto' },
+                { nombreExamen:'PCR', categoria:'Laboratorio', fechaEmision:baseDate, indicacion:'', prioridad:'normal', citaAgendada:false, fechaCita:null, lugar:'', asistenciaConfirmada:false, resultadoSubido:false, resultadoUrl:'', fechaResultado:null, observaciones:'', confianza:'media', estado:'pendiente_agendar', origen:'foto' }
+              ],
+              alertasRevision:['Revisar medicamentos y órdenes antes de guardar.']
+            };
+            this.photoUpload.processing = false; this.showToast('Información detectada en modo mock. Revisa antes de guardar.');
+          }, 500);
+        },
+        addDetectedMeasurement() { const date = this.photoUpload.parsed?.fechaConsulta || new Date().toISOString().split('T')[0]; this.photoUpload.parsed.examenFisico.mediciones.push({ tipo:'', valor:null, unidad:'', fecha:date, confianza:'media', estado:'pendiente_revision', origen:'foto' }); },
+        addDetectedMedication() { this.photoUpload.parsed.medicamentos.push({ nombre:'', dosis:'', frecuencia:'', duracion:'', via:'', observaciones:'', confianza:'media', estado:'pendiente_revision', origen:'foto' }); },
+        addDetectedExamOrder() { const date = this.photoUpload.parsed?.fechaConsulta || new Date().toISOString().split('T')[0]; this.photoUpload.parsed.ordenesExamenes.push({ nombreExamen:'', categoria:'Laboratorio', fechaEmision:date, indicacion:'', prioridad:'normal', citaAgendada:false, fechaCita:null, lugar:'', asistenciaConfirmada:false, resultadoSubido:false, resultadoUrl:'', fechaResultado:null, observaciones:'', confianza:'media', estado:'pendiente_agendar', origen:'foto' }); },
+        measurementKeyFromTipo(tipo) {
+          const t = String(tipo || '').toLowerCase();
+          if (t.includes('peso')) return 'weight'; if (t.includes('talla') || t.includes('estatura')) return 'height'; if (t.includes('crane')) return 'headCircumference';
+          if (t.includes('gluc')) return 'glucose'; if (t.includes('sist')) return 'bpSys'; if (t.includes('diast')) return 'bpDia'; if (t.includes('colesterol')) return 'cholesterol'; if (t.includes('temperatura')) return 'temperature';
+          return null;
+        },
+        async saveDetectedMeasurements(consultaId = '', consultaTitle = '') {
+          const p = this.photoUpload.parsed; if (!p) return;
+          const confirmed = p.examenFisico.mediciones.filter(m => m.estado === 'confirmado' && m.tipo && m.valor !== null && m.valor !== '');
+          if (!confirmed.length) { this.showToast('No hay mediciones confirmadas para guardar', 'error'); return; }
+          for (const m of confirmed) {
+            if (String(m.tipo).toLowerCase().includes('imc')) continue;
+            const key = this.measurementKeyFromTipo(m.tipo);
+            const data = { category:'medicion', profileId:this.currentProfile.id, date:m.fecha || p.fechaConsulta, title:'Medición desde foto', name:'Medición desde foto', relatedControlId:consultaId, relatedControlTitle:consultaTitle, origen:'foto' };
+            if (key) data[key] = Number(m.valor); else data.notes = `${m.tipo}: ${m.valor} ${m.unidad || ''}`;
+            let id;
+            if (isFirebaseReady && this.currentUser) { const ref = await this.profilePath().collection('mediciones').add({ ...data, createdAt: firebase.firestore.FieldValue.serverTimestamp() }); id = ref.id; }
+            else { id = Date.now().toString() + Math.random().toString(16).slice(2); await localDB.entries.add({ ...data, id }); }
+            this.mediciones.unshift({ ...data, id });
+          }
+          this.showToast('Mediciones confirmadas guardadas ✓');
+        },
+        async saveDetectedMedications(consultaId = '', consultaTitle = '') {
+          const p = this.photoUpload.parsed; if (!p) return;
+          const confirmed = p.medicamentos.filter(m => m.estado === 'confirmado' && m.nombre);
+          if (!confirmed.length) { this.showToast('No hay medicamentos confirmados para guardar', 'error'); return; }
+          for (const m of confirmed) {
+            const days = this.parseDurationDays(m.duracion || '');
+            const data = { category:'medicamento', profileId:this.currentProfile.id, name:m.nombre, dose:m.dosis, frequency:m.frecuencia || 'Según indicación', treatmentDays:days, durationDays:days, startDate:p.fechaConsulta, date:p.fechaConsulta, active:true, doctor:p.profesional || '', linkedConsultationId:consultaId, linkedConsultationTitle:consultaTitle, notes:m.observaciones || '', origen:'foto' };
+            if (days) data.estimatedEndDate = this.addDaysToDate(data.startDate, days);
+            let id;
+            if (isFirebaseReady && this.currentUser) { const ref = await this.profilePath().collection('medicamentos').add({ ...data, createdAt: firebase.firestore.FieldValue.serverTimestamp() }); id = ref.id; }
+            else { id = Date.now().toString() + Math.random().toString(16).slice(2); await localDB.entries.add({ ...data, id }); }
+            this.medicamentos.unshift({ ...data, id });
+          }
+          this.showToast('Medicamentos confirmados guardados ✓');
+        },
+        async saveDetectedExamOrders(consultaId = '', consultaTitle = '') {
+          const p = this.photoUpload.parsed; if (!p) return;
+          const orders = p.ordenesExamenes.filter(o => o.nombreExamen);
+          if (!orders.length) { this.showToast('No hay órdenes para guardar', 'error'); return; }
+          for (const o of orders) {
+            this.refreshExamOrderStatus(o);
+            const data = { ...o, category:'ordenesExamenes', profileId:this.currentProfile.id, consultaId, consultaTitulo:consultaTitle, date:o.fechaEmision || p.fechaConsulta, fechaEmision:o.fechaEmision || p.fechaConsulta, origen:o.origen || 'foto' };
+            let id;
+            if (isFirebaseReady && this.currentUser) { const ref = await this.profilePath().collection('ordenesExamenes').add({ ...data, createdAt: firebase.firestore.FieldValue.serverTimestamp() }); id = ref.id; }
+            else { id = Date.now().toString() + Math.random().toString(16).slice(2); await localDB.entries.add({ ...data, id }); }
+            this.examOrders.unshift({ ...data, id });
+          }
+          this.showToast('Órdenes guardadas ✓');
+        },
+        async saveDetectedFullConsultation() {
+          const p = this.photoUpload.parsed; if (!p) return;
+          if (!confirm('¿Guardar la consulta revisada y los datos confirmados?')) return;
+          const clean = { category:'consulta', profileId:this.currentProfile.id, title:p.titulo || 'Consulta desde foto', date:p.fechaConsulta || new Date().toISOString().split('T')[0], doctor:p.profesional || '', specialty:p.especialidad || '', hospital:p.centroMedico || '', diagnosis:p.diagnosticos.map(d=>d.texto).filter(Boolean).join('; '), physicalExam:p.examenFisico?.observaciones || '', medicationsText:p.medicamentos.map(m => [m.nombre, m.dosis, m.frecuencia, m.duracion].filter(Boolean).join(' | ')).join('\\n'), generalInstructions:p.indicacionesGenerales.join('\\n'), nextControlDate:p.proximoControl?.fechaEstimada || '', nextControlText:p.proximoControl?.textoOriginal || '', origen:'foto', textoOCR:p.textoOCR || '' };
+          let id;
+          if (isFirebaseReady && this.currentUser) { const ref = await this.profilePath().collection('consultas').add({ ...clean, createdAt: firebase.firestore.FieldValue.serverTimestamp() }); id = ref.id; }
+          else { id = Date.now().toString(); await localDB.entries.add({ ...clean, id }); }
+          clean.id = id; this.consultas.unshift(clean);
+          await this.saveDetectedMeasurements(id, clean.title); await this.saveDetectedMedications(id, clean.title); await this.saveDetectedExamOrders(id, clean.title);
+          this.resetMedicalPhoto(); this.activeSection = 'consultas'; this.showToast('Consulta desde foto guardada ✓');
+        },
+        discardDetectedConsultation() { if (confirm('¿Descartar la carga detectada?')) this.resetMedicalPhoto(); },
+        refreshExamOrderStatus(o) { if (o.resultadoSubido) o.estado = 'completado'; else if (o.asistenciaConfirmada) o.estado = 'resultado_pendiente'; else if (o.citaAgendada) o.estado = 'cita_agendada'; else o.estado = 'pendiente_agendar'; },
+        async updateExamOrderQuick(o) { this.refreshExamOrderStatus(o); if (isFirebaseReady && this.currentUser && o.id) await this.profilePath().collection('ordenesExamenes').doc(o.id).set(o,{merge:true}); this.showToast('Orden actualizada ✓'); },
+        addManualExamOrder() { const today = new Date().toISOString().split('T')[0]; this.photoUpload.parsed = { fechaConsulta:today, titulo:'Orden médica manual', profesional:'', especialidad:'', centroMedico:'', examenFisico:{mediciones:[],observaciones:''}, diagnosticos:[], medicamentos:[], indicacionesGenerales:[], proximoControl:{textoOriginal:'',fechaEstimada:'',estado:'pendiente_revision'}, ordenesExamenes:[{ nombreExamen:'', categoria:'Laboratorio', fechaEmision:today, citaAgendada:false, fechaCita:null, lugar:'', asistenciaConfirmada:false, resultadoSubido:false, estado:'pendiente_agendar', origen:'manual' }]}; this.activeSection='fotoConsulta'; },
+        examStatusLabel(s) { return {pendiente_agendar:'Pendiente de agendar',cita_agendada:'Cita agendada',resultado_pendiente:'Resultado pendiente',completado:'Completado'}[s] || s; },
+        examStatusClass(s) { return s==='completado'?'bg-green-100 text-green-700':s==='resultado_pendiente'?'bg-red-100 text-red-700':s==='cita_agendada'?'bg-sky-100 text-sky-700':'bg-amber-100 text-amber-700'; },
+        examOrderAlert(o) { if (!o.citaAgendada) return 'Tienes exámenes pendientes de agendar.'; if (!o.asistenciaConfirmada) return 'Confirma asistencia cuando se realice el examen.'; if (!o.resultadoSubido) return 'Falta subir el resultado del examen.'; return 'Orden completada.'; },
+        get pendingExamStats() { return [{label:'Por agendar',value:this.examOrders.filter(o=>o.estado==='pendiente_agendar').length},{label:'Citas agendadas',value:this.examOrders.filter(o=>o.estado==='cita_agendada').length},{label:'Resultados pendientes',value:this.examOrders.filter(o=>o.estado==='resultado_pendiente').length},{label:'Completados',value:this.examOrders.filter(o=>o.estado==='completado').length}]; },
+        get groupedExamOrders() { const groups=[{status:'pendiente_agendar',label:'Pendiente de agendar',items:[]},{status:'cita_agendada',label:'Cita agendada',items:[]},{status:'resultado_pendiente',label:'Resultado pendiente',items:[]},{status:'completado',label:'Completado',items:[]}]; groups.forEach(g=>g.items=this.examOrders.filter(o=>o.estado===g.status)); return groups; },
+
         // ---- FILE UPLOAD ----
         async handleFileDrop(e) {
           const files = Array.from(e.dataTransfer.files);
@@ -1129,7 +1273,7 @@ window.tailwind = window.tailwind || {};
       if (!('serviceWorker' in navigator)) return;
       window.addEventListener('load', () => {
         const swCode = `
-const CACHE = 'mihm-v2.5';
+const CACHE = 'mihm-v2.6';
 const ASSETS = ['./', './index.html', './styles.css', './app.js'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).catch(() => undefined)));

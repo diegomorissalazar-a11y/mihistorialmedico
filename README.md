@@ -1,13 +1,18 @@
-# MiHistorialMédico v2.5
+# MiHistorialMédico v2.6
 
-Cambios:
-- Consulta/control con estructura clínica por bloques:
-  1. Datos del control
-  2. Examen físico
-  3. Diagnóstico
-  4. Medicamentos indicados
-  5. Indicaciones generales
-- Examen físico alimenta automáticamente Mediciones.
-- Medicamentos indicados alimentan automáticamente Medicamentos activos.
-- Próximo control puede calcularse por preset: 1, 2, 3, 6 o 12 meses.
-- Indicadores alimentan el dashboard de mediciones v2.4.
+Funcionalidad nueva: carga de consultas y controles desde fotos en modo mock local.
+
+Incluye:
+- Subir/tomar foto.
+- Validación JPG/PNG/WEBP y tamaño máximo 8 MB.
+- Preview de imagen.
+- Mock OCR/IA sin API externa.
+- Pantalla de revisión antes de guardar.
+- 5 secciones: examen físico, diagnóstico/medicamentos, indicaciones, próximo control y órdenes médicas.
+- Mediciones confirmadas alimentan dashboard.
+- Medicamentos confirmados alimentan historial.
+- Órdenes médicas alimentan Exámenes pendientes.
+- Checklist: cita agendada, asistencia confirmada, resultado subido.
+
+No hay guardado automático sin confirmación.
+No hay claves API expuestas.
