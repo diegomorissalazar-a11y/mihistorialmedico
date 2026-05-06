@@ -6,7 +6,7 @@
   <title>MiHistorialMédico</title>
   <meta name="description" content="Historial médico personal y familiar" />
   <meta name="theme-color" content="#0ea5e9" />
-  <link rel="manifest" href="#" id="manifest-link" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%230ea5e9'/%3E%3Cpath d='M34 22h32v10H34zM28 30h44v48H28z' fill='none' stroke='white' stroke-width='7' stroke-linejoin='round'/%3E%3C/svg%3E" />
 
   <!-- App JS: define Tailwind config first, then app logic after CDN/libs load -->
   <script src="app.js"></script>
@@ -56,7 +56,7 @@
         </div>
         <h1 class="text-2xl font-bold text-slate-800 dark:text-white">MiHistorial<span class="text-sky-500">Médico</span></h1>
         <p class="text-slate-500 dark:text-slate-400 text-sm mt-1">Tu historial de salud de por vida</p>
-        <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Versión v2.8-limpia</p>
+        <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Versión v2.9</p>
       </div>
 
       <!-- Form -->
@@ -161,7 +161,7 @@
 
       <!-- Footer -->
       <div class="p-3 border-t border-slate-100 dark:border-slate-700 space-y-0.5">
-        <div class="px-4 pb-2 text-[11px] text-slate-400 dark:text-slate-500">MiHistorialMédico v2.8-limpia</div>
+        <div class="px-4 pb-2 text-[11px] text-slate-400 dark:text-slate-500">MiHistorialMédico v2.9</div>
         <button class="sidebar-link w-full" @click="exportCSV()">📤 Exportar CSV</button>
         <button class="sidebar-link w-full" @click="darkMode = !darkMode">
           <span x-text="darkMode ? '☀️' : '🌙'"></span>
@@ -657,6 +657,7 @@
                     <div x-show="c.physicalExam || c.weight || c.height || c.headCircumference" class="mt-2 text-xs bg-sky-50 dark:bg-sky-900/20 rounded-lg px-3 py-2 text-sky-800 dark:text-sky-300" x-text="'Examen físico: ' + clinicalPhysicalSummary(c)"></div>
                     <div x-show="c.medicationsText" class="mt-2 text-xs bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-2 text-amber-800 dark:text-amber-300 line-clamp-2" x-text="'Medicamentos: ' + c.medicationsText"></div>
                     <div x-show="c.generalInstructions" class="mt-2 text-xs bg-indigo-50 dark:bg-indigo-900/20 rounded-lg px-3 py-2 text-indigo-800 dark:text-indigo-300 line-clamp-2" x-text="'Indicaciones: ' + c.generalInstructions"></div>
+                    <div x-show="c.examOrdersText" class="mt-2 text-xs bg-purple-50 dark:bg-purple-900/20 rounded-lg px-3 py-2 text-purple-800 dark:text-purple-300 line-clamp-2" x-text="'Órdenes / exámenes: ' + c.examOrdersText"></div>
                     <div x-show="c.notes" class="mt-1 text-xs text-slate-500 line-clamp-2" x-text="c.notes"></div>
                   </div>
                 </div>
@@ -819,6 +820,69 @@
               </div>
             </template>
             <div x-show="mediciones.length === 0" class="card text-center py-10 text-slate-400">Sin mediciones registradas.</div>
+          </div>
+        </div>
+
+
+        <!-- ===== ÓRDENES MÉDICAS / EXÁMENES ===== -->
+        <div x-show="activeSection === 'ordenesExamenes'" class="animate-fade-in space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-lg font-bold">🧾 Órdenes médicas y exámenes</h2>
+              <p class="text-sm text-slate-500 mt-1">Seguimiento de exámenes solicitados en consultas y controles.</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="card text-center">
+              <div class="text-2xl font-bold text-amber-600" x-text="examOrders.filter(o=>o.status==='pendiente_agendar').length"></div>
+              <div class="text-xs text-slate-500">Pendiente agendar</div>
+            </div>
+            <div class="card text-center">
+              <div class="text-2xl font-bold text-sky-600" x-text="examOrders.filter(o=>o.status==='cita_agendada').length"></div>
+              <div class="text-xs text-slate-500">Cita agendada</div>
+            </div>
+            <div class="card text-center">
+              <div class="text-2xl font-bold text-red-600" x-text="examOrders.filter(o=>o.status==='resultado_pendiente').length"></div>
+              <div class="text-xs text-slate-500">Falta resultado</div>
+            </div>
+            <div class="card text-center">
+              <div class="text-2xl font-bold text-green-600" x-text="examOrders.filter(o=>o.status==='completado').length"></div>
+              <div class="text-xs text-slate-500">Completados</div>
+            </div>
+          </div>
+
+          <div class="space-y-3">
+            <template x-for="o in examOrders" :key="o.id">
+              <div class="card">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <div class="font-semibold" x-text="o.name"></div>
+                    <div class="text-xs text-slate-500" x-text="(o.consultationTitle || 'Consulta') + ' · ' + formatDate(o.date)"></div>
+                    <div class="text-xs text-slate-500 mt-1" x-show="o.notes" x-text="o.notes"></div>
+                    <div class="text-xs text-slate-500 mt-1" x-show="o.appointmentDate" x-text="'Cita: ' + formatDate(o.appointmentDate) + (o.place ? ' · ' + o.place : '')"></div>
+                  </div>
+                  <span class="badge" :class="examOrderStatusClass(o.status)" x-text="examOrderStatusLabel(o.status)"></span>
+                </div>
+
+                <div class="grid md:grid-cols-3 gap-2 mt-3 text-sm">
+                  <label class="flex items-center gap-2"><input type="checkbox" x-model="o.appointmentScheduled" @change="saveExamOrderProgress(o)" /> Cita agendada</label>
+                  <label class="flex items-center gap-2"><input type="checkbox" x-model="o.attended" @change="saveExamOrderProgress(o)" /> Asistencia confirmada</label>
+                  <label class="flex items-center gap-2"><input type="checkbox" x-model="o.resultUploaded" @change="saveExamOrderProgress(o)" /> Resultado subido</label>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-2 mt-3">
+                  <input type="date" class="input" x-model="o.appointmentDate" @change="saveExamOrderProgress(o)" />
+                  <input class="input" x-model="o.place" placeholder="Lugar / laboratorio" @change="saveExamOrderProgress(o)" />
+                </div>
+
+                <div class="mt-2 text-xs text-slate-500" x-text="examOrderAlert(o)"></div>
+              </div>
+            </template>
+
+            <div x-show="examOrders.length === 0" class="card text-center py-10 text-slate-400">
+              Sin órdenes médicas registradas.
+            </div>
           </div>
         </div>
 
@@ -1149,6 +1213,15 @@ Broncotusilan 100mg/5ml | 2,5 ml cada 8 horas | por 10 días"></textarea>
               <div class="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20 space-y-3">
                 <h4 class="text-sm font-semibold text-indigo-800 dark:text-indigo-200">5. Indicaciones generales</h4>
                 <textarea class="input" rows="4" x-model="form.generalInstructions" placeholder="Ej: Comidas + frutas, control en 2 meses, SOS, cuidados generales..."></textarea>
+              </div>
+
+              <!-- Órdenes médicas / exámenes -->
+              <div class="p-3 rounded-2xl bg-purple-50 dark:bg-purple-900/20 space-y-3">
+                <h4 class="text-sm font-semibold text-purple-800 dark:text-purple-200">6. Órdenes médicas / exámenes solicitados</h4>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Ingresa un examen por línea. Se crearán como pendientes de agendar.</p>
+                <textarea class="input font-mono text-xs" rows="4" x-model="form.examOrdersText" placeholder="Ej:
+Hemograma completo | Laboratorio | Ayuno 8 horas
+Radiografía de tórax | Imagenología"></textarea>
               </div>
 
               <div>

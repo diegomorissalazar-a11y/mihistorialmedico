@@ -112,6 +112,7 @@ window.tailwind = window.tailwind || {};
         documents: [],
         medTakenToday: [],
         reminders: [],
+        examOrders: [],
         controles: [],
         recetas: [],
         compras: [],
@@ -134,6 +135,7 @@ window.tailwind = window.tailwind || {};
           { id: 'examenes', label: 'Exámenes', icon: '🔬', badge: null },
           { id: 'medicamentos', label: 'Medicamentos', icon: '💊', badge: null },
           { id: 'consultas', label: 'Consultas', icon: '🏥', badge: null },
+          { id: 'ordenesExamenes', label: 'Órdenes / exámenes', icon: '🧾', badge: null },
           { id: 'vacunas', label: 'Vacunas', icon: '💉', badge: null },
           { id: 'calendario', label: 'Calendario', icon: '📅', badge: null },
           { id: 'recetas', label: 'Recetas', icon: '🧾', badge: null },
@@ -149,6 +151,7 @@ window.tailwind = window.tailwind || {};
           { id: 'medicamentos', label: 'Meds', icon: '💊' },
           { id: 'calendario', label: 'Agenda', icon: '📅' },
           { id: 'consultas', label: 'Consultas', icon: '🏥' },
+          { id: 'ordenesExamenes', label: 'Órdenes', icon: '🧾' },
           { id: 'estadisticas', label: 'Stats', icon: '📊' },
         ],
 
@@ -329,6 +332,7 @@ window.tailwind = window.tailwind || {};
             this.loadSection('mediciones'),
             this.loadSection('documentos'),
             this.loadSection('recordatorios'),
+            this.loadSection('ordenesExamenes'),
             this.loadSection('controles'),
             this.loadSection('recetas'),
             this.loadSection('compras'),
@@ -354,7 +358,7 @@ window.tailwind = window.tailwind || {};
           const mapKey = {
             examenes: 'examenes', medicamentos: 'medicamentos', consultas: 'consultas',
             vacunas: 'vacunas', alergias: 'alergias', cirugias: 'cirugias',
-            mediciones: 'mediciones', documentos: 'documents', recordatorios: 'reminders',
+            mediciones: 'mediciones', documentos: 'documents', recordatorios: 'reminders', ordenesExamenes: 'examOrders',
             controles: 'controles', recetas: 'recetas', compras: 'compras', tomas: 'treatmentLogs'
           };
           this[mapKey[section]] = data;
@@ -509,6 +513,7 @@ window.tailwind = window.tailwind || {};
           if (category === 'consulta') {
             await this.createLinkedMeasurementFromConsulta(clean);
             await this.createLinkedMedicationsFromConsulta(clean);
+            await this.createLinkedExamOrdersFromConsulta(clean);
           }
 
           // Update local state
@@ -1131,7 +1136,7 @@ window.tailwind = window.tailwind || {};
       if (!('serviceWorker' in navigator)) return;
       window.addEventListener('load', () => {
         const swCode = `
-const CACHE = 'mihm-v2.8-limpia';
+const CACHE = 'mihm-v2.9';
 const ASSETS = ['./', './index.html', './styles.css', './app.js'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).catch(() => undefined)));

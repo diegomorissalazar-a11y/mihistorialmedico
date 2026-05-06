@@ -1,31 +1,41 @@
-# MiHistorialMédico v2.8-limpia
+# MiHistorialMédico v2.9
 
-Versión limpia y estable.
+Versión estable con corrección de guardado de consultas y módulo de órdenes médicas.
 
-## Incluye
-- Login/registro Firebase.
-- Perfiles múltiples.
-- Inicio/dashboard.
-- Timeline.
-- Exámenes.
-- Medicamentos.
-- Consultas y controles clínicos.
-- Mediciones corporales.
-- Calendario / próximo control.
-- Vacunas.
-- Alergias.
-- Cirugías.
-- Documentos.
-- Estadísticas.
-- Export CSV.
+## Correcciones
+- Se corrige error `this.createLinkedMeasurementFromConsulta is not a function`.
+- Se elimina registro Service Worker por blob que fallaba en GitHub Pages.
+- Se elimina manifest inline roto para evitar error de consola.
+- Se agrega favicon inline para evitar 404.
+- Se mantiene Tailwind CDN: el warning de producción es informativo y no rompe la app.
 
-## Se eliminó de esta versión
-- Importador JSON/CSV experimental.
-- Carga desde foto/OCR experimental.
-- Código experimental que rompía Alpine.
+## Nuevo en consulta/control
+Dentro de Consulta / Control se agrega:
 
-## Importante al subir
-Después de reemplazar archivos en GitHub Pages:
-1. Haz Ctrl+F5.
-2. Si sigue cargando versión antigua, abre DevTools > Application > Service Workers > Unregister.
-3. Borra Cache Storage del sitio.
+6. Órdenes médicas / exámenes solicitados
+
+Formato sugerido, un examen por línea:
+
+```text
+Hemograma completo | Laboratorio | Ayuno 8 horas
+Radiografía de tórax | Imagenología
+Perfil lipídico | Laboratorio
+```
+
+Al guardar la consulta:
+- Se crea la consulta.
+- Las mediciones del examen físico alimentan Mediciones.
+- Los medicamentos indicados alimentan Medicamentos.
+- Las órdenes de exámenes alimentan la nueva sección Órdenes / exámenes.
+
+## Estados de órdenes
+- Pendiente agendar
+- Cita agendada
+- Resultado pendiente
+- Completado
+
+## Recomendación al publicar
+Después de subir a GitHub Pages:
+1. Ctrl + F5.
+2. Si sigue cargando versión antigua: DevTools > Application > Service Workers > Unregister.
+3. Borra Cache Storage.
