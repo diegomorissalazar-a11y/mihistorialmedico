@@ -453,23 +453,45 @@
 
           <div class="space-y-3">
             <template x-for="m in medicamentos.filter(m => medTab === 'activos' ? m.active : !m.active)" :key="m.id">
-              <div class="card">
+              <div class="card card-hover" @click="openEntryDetail({...m, category:'medicamento'})">
                 <div class="flex items-start gap-3">
                   <div class="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-xl flex-shrink-0">💊</div>
                   <div class="flex-1">
                     <div class="flex items-start justify-between">
                       <div>
                         <div class="font-semibold" x-text="m.name"></div>
-                        <div class="text-xs text-slate-500 mt-0.5" x-text="m.dose + ' · ' + m.frequency"></div>
+                        <div class="text-xs text-slate-500 mt-0.5" x-text="(m.dose || '') + (m.frequency ? ' · ' + m.frequency : '')"></div>
                       </div>
                       <span class="badge" :class="m.active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'" x-text="m.active ? 'Activo' : 'Terminado'"></span>
                     </div>
-                    <div class="flex items-center gap-4 mt-3 text-xs text-slate-500">
+
+                    <!-- Fechas -->
+                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-slate-500">
                       <span x-show="m.startDate">📅 Inicio: <span class="text-slate-700 dark:text-slate-300" x-text="formatDate(m.startDate?.toDate ? m.startDate.toDate() : new Date(m.startDate))"></span></span>
-                      <span x-show="m.stock">📦 Stock: <span class="font-semibold text-slate-700 dark:text-slate-300" x-text="m.stock + ' unidades'"></span></span>
+                      <span x-show="m.endDate">🏁 Último día: <span class="font-semibold text-slate-700 dark:text-slate-300" x-text="formatDate(m.endDate?.toDate ? m.endDate.toDate() : new Date(m.endDate))"></span></span>
+                      <span x-show="m.durationDays && !m.endDate">⏱ <span x-text="m.durationDays + ' días'"></span></span>
+                      <span x-show="m.stock">📦 <span class="font-semibold text-slate-700 dark:text-slate-300" x-text="m.stock + ' uds.'"></span></span>
                     </div>
+
+                    <!-- Pill días restantes -->
+                    <div x-show="m.active && m.endDate" class="mt-2" @click.stop>
+                      <span class="badge text-xs"
+                        :class="{
+                          'bg-red-100 text-red-700':   daysUntil(m.endDate) < 0,
+                          'bg-amber-100 text-amber-700': daysUntil(m.endDate) >= 0 && daysUntil(m.endDate) <= 2,
+                          'bg-sky-100 text-sky-700':   daysUntil(m.endDate) > 2 && daysUntil(m.endDate) <= 7,
+                          'bg-green-100 text-green-700': daysUntil(m.endDate) > 7
+                        }"
+                        x-text="daysUntil(m.endDate) < 0
+                          ? '⚠️ Tratamiento vencido hace ' + Math.abs(daysUntil(m.endDate)) + ' días'
+                          : daysUntil(m.endDate) === 0
+                            ? '🔔 Último día hoy'
+                            : '⏳ Quedan ' + daysUntil(m.endDate) + ' días'">
+                      </span>
+                    </div>
+
                     <!-- Toma de hoy -->
-                    <div x-show="m.active" class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 flex items-center gap-2">
+                    <div x-show="m.active" class="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700 flex items-center gap-2" @click.stop>
                       <button class="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg transition-all" :class="isTakenToday(m.id) ? 'bg-green-100 text-green-700' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'" @click="toggleMedTakenById(m.id, m.name, m.dose)">
                         <span x-text="isTakenToday(m.id) ? '✓ Tomado hoy' : 'Marcar como tomado hoy'"></span>
                       </button>
