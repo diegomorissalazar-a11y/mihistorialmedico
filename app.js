@@ -885,6 +885,87 @@ window.tailwind = window.tailwind || {};
           this.form = { ...this.form, ...(templates[type] || {}) };
         },
 
+        // ---- FUNCIONES LINKED DESDE CONSULTA ----
+
+        async createLinkedMeasurementFromConsulta(consulta) {
+          const metrics = ['weight','height','headCircumference','glucose','bpSys','bpDia','cholesterol','temperature'];
+          const hasMetric = metrics.some(k => consulta[k] !== undefined && consulta[k] !== '' && consulta[k] !== null);
+          // Also check physicalItems array
+          const hasPhysical = Array.isArray(consulta.physicalItems) && consulta.physicalItems.some(p => p.value !== '' && p.value !== null && p.value !== undefined);
+          if (!hasMetric && !hasPhysical) return;
+
+          const meas = { category: 'medicion', profileId: this.currentProfile.id, date: consulta.date, title: 'Medición desde ' + (consulta.title || 'consulta'), relatedControlTitle: consulta.title || 'Consulta' };
+          metrics.forEach(k => { if (consulta[k] !== undefined && consulta[k] !== '' && consulta[k] !== null) meas[k] = consulta[k]; });
+
+          // Also materialize physicalItems into meas
+          if (Array.isArray(consulta.physicalItems)) {
+            for (const item of consulta.physicalItems) {
+              const key = this.physicalMetricKey(item.type);
+              if (key && item.value !== '' && item.value !== null && item.value !== undefined) meas[key] = item.value;
+            }
+          }
+
+          let measId;
+          if (isFirebaseReady && this.currentUser) {
+            const ref = await this.profilePath().collection('mediciones').add({ ...meas, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+            measId = ref.id;
+          } else {
+            measId = Date.now().toString() + '_m';
+            if (localDB) await localDB.entries.add({ ...meas, id: measId });
+          }
+          this.mediciones.unshift({ ...meas, id: measId });
+        },
+
+        async createLinkedMedicationsFromConsulta(consulta) {
+          if (!Array.isArray(consulta.medicationItems) || consulta.medicationItems.length === 0) return;
+          for (const item of consulta.medicationItems) {
+            if (!item.name) continue;
+            const med = {
+              category: 'medicamento', profileId: this.currentProfile.id,
+              name: item.name, dose: item.dose || '', frequency: item.frequency || 'Diaria',
+              route: item.route || '', notes: item.notes || '',
+              startDate: consulta.date, active: true,
+              doctor: consulta.doctor || '',
+            };
+            if (item.durationDays) {
+              med.durationDays = Number(item.durationDays);
+              med.endDate = this.estimatedEndDate(consulta.date, item.durationDays);
+            }
+            let medId;
+            if (isFirebaseReady && this.currentUser) {
+              const ref = await this.profilePath().collection('medicamentos').add({ ...med, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+              medId = ref.id;
+            } else {
+              medId = Date.now().toString() + '_med_' + Math.random().toString(16).slice(2);
+              if (localDB) await localDB.entries.add({ ...med, id: medId });
+            }
+            this.medicamentos.unshift({ ...med, id: medId });
+          }
+        },
+
+        async createLinkedExamOrdersFromConsulta(consulta) {
+          if (!Array.isArray(consulta.examOrderItems) || consulta.examOrderItems.length === 0) return;
+          for (const item of consulta.examOrderItems) {
+            if (!item.name) continue;
+            const order = {
+              category: 'examen', profileId: this.currentProfile.id,
+              title: item.name, subtype: item.type || 'Otro',
+              notes: item.notes || '', date: consulta.date,
+              status: 'Pendiente', doctor: consulta.doctor || '',
+              sourceConsultaId: consulta.id || '',
+            };
+            let orderId;
+            if (isFirebaseReady && this.currentUser) {
+              const ref = await this.profilePath().collection('ordenesExamenes').add({ ...order, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+              orderId = ref.id;
+            } else {
+              orderId = Date.now().toString() + '_ord_' + Math.random().toString(16).slice(2);
+              if (localDB) await localDB.entries.add({ ...order, id: orderId });
+            }
+            this.examOrders.unshift({ ...order, id: orderId });
+          }
+        },
+
         // ---- FILE UPLOAD ----
         async handleFileDrop(e) {
           const files = Array.from(e.dataTransfer.files);
