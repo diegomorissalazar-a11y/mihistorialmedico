@@ -1553,39 +1553,92 @@
         <!-- Entry Detail -->
         <template x-if="modal.type === 'detail' && modal.entry">
           <div>
+            <!-- Header -->
             <div class="flex items-start justify-between mb-4">
               <div>
                 <span class="chip border-slate-200 text-slate-600 mb-2 block w-fit" x-text="categoryLabel(modal.entry.category)"></span>
                 <h3 class="font-bold text-lg" x-text="modal.entry.title || modal.entry.name"></h3>
                 <p class="text-sm text-slate-500" x-text="formatDate(modal.entry.date?.toDate ? modal.entry.date.toDate() : new Date(modal.entry.date))"></p>
               </div>
-              <button class="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl" @click="modal.show = false">✕</button>
+              <button class="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl" @click="modal.show = false; modal.editing = false">✕</button>
             </div>
-            <div class="space-y-3">
-              <template x-for="[k, v] in Object.entries(modal.entry).filter(([k, v]) => !['id','category','uid','profileId','createdAt'].includes(k) && v)" :key="k">
-                <div class="flex items-start gap-3 text-sm">
-                  <span class="text-slate-400 capitalize min-w-[100px]" x-text="translateKey(k)"></span>
-                  <span class="text-slate-700 dark:text-slate-300 flex-1" x-text="formatFieldValue(k, v)"></span>
-                </div>
-              </template>
-            </div>
-            <div x-show="modal.entry?.category === 'receta'" class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
-              <h4 class="font-semibold text-sm mb-2">Historial de tomas registradas</h4>
-              <div class="space-y-2 max-h-48 overflow-y-auto">
-                <template x-for="t in treatmentLogs.filter(t => t.recipeId === modal.entry.id).sort((a,b) => (b.date + b.scheduledTime).localeCompare(a.date + a.scheduledTime))" :key="t.id || t.doseKey">
-                  <div class="flex items-center gap-3 p-2 rounded-xl bg-slate-50 dark:bg-slate-700 text-xs">
-                    <span x-text="t.status === 'tomada' ? '✅' : '↷'"></span>
-                    <span class="font-medium" x-text="formatDate(t.date) + ' ' + t.scheduledTime"></span>
-                    <span class="ml-auto badge" :class="t.status === 'tomada' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'" x-text="t.status"></span>
+
+            <!-- MODO VISTA -->
+            <div x-show="!modal.editing">
+              <div class="space-y-3">
+                <template x-for="[k, v] in Object.entries(modal.entry).filter(([k, v]) => !['id','category','uid','profileId','createdAt'].includes(k) && v)" :key="k">
+                  <div class="flex items-start gap-3 text-sm">
+                    <span class="text-slate-400 capitalize min-w-[140px]" x-text="translateKey(k)"></span>
+                    <span class="text-slate-700 dark:text-slate-300 flex-1" x-text="formatFieldValue(k, v)"></span>
                   </div>
                 </template>
-                <div x-show="treatmentLogs.filter(t => t.recipeId === modal.entry.id).length === 0" class="text-xs text-slate-400">Aún no hay tomas registradas para esta receta.</div>
+              </div>
+
+              <!-- Historial tomas (receta) -->
+              <div x-show="modal.entry?.category === 'receta'" class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                <h4 class="font-semibold text-sm mb-2">Historial de tomas registradas</h4>
+                <div class="space-y-2 max-h-48 overflow-y-auto">
+                  <template x-for="t in treatmentLogs.filter(t => t.recipeId === modal.entry.id).sort((a,b) => (b.date + b.scheduledTime).localeCompare(a.date + a.scheduledTime))" :key="t.id || t.doseKey">
+                    <div class="flex items-center gap-3 p-2 rounded-xl bg-slate-50 dark:bg-slate-700 text-xs">
+                      <span x-text="t.status === 'tomada' ? '✅' : '↷'"></span>
+                      <span class="font-medium" x-text="formatDate(t.date) + ' ' + t.scheduledTime"></span>
+                      <span class="ml-auto badge" :class="t.status === 'tomada' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'" x-text="t.status"></span>
+                    </div>
+                  </template>
+                  <div x-show="treatmentLogs.filter(t => t.recipeId === modal.entry.id).length === 0" class="text-xs text-slate-400">Aún no hay tomas registradas para esta receta.</div>
+                </div>
+              </div>
+
+              <!-- Botones vista -->
+              <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+                <button class="btn-danger justify-center" style="flex:1" @click="deleteEntry(modal.entry); modal.show = false; modal.editing = false">Eliminar</button>
+                <template x-if="modal.entry?.category === 'medicamento'">
+                  <button class="btn-primary justify-center" style="flex:1" @click="openEditMedicamento(modal.entry)">✏️ Editar</button>
+                </template>
+                <button class="btn-secondary justify-center" style="flex:1" @click="modal.show = false; modal.editing = false">Cerrar</button>
               </div>
             </div>
-            <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
-              <button class="btn-danger flex-1 justify-center" @click="deleteEntry(modal.entry); modal.show = false">Eliminar</button>
-              <button class="btn-secondary flex-1 justify-center" @click="modal.show = false">Cerrar</button>
+
+            <!-- MODO EDICIÓN (solo medicamento) -->
+            <div x-show="modal.editing">
+              <div class="space-y-3">
+                <div><label class="label">Nombre *</label><input class="input" x-model="modal.editForm.name" /></div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div><label class="label">Dosis</label><input class="input" x-model="modal.editForm.dose" /></div>
+                  <div>
+                    <label class="label">Frecuencia</label>
+                    <select class="input" x-model="modal.editForm.frequency">
+                      <option>Diaria</option><option>Cada 8 horas</option><option>Cada 12 horas</option><option>Cada 2 días</option><option>Semanal</option><option>Según necesidad</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div><label class="label">Fecha inicio</label><input type="date" class="input" x-model="modal.editForm.startDate" /></div>
+                  <div><label class="label">Duración (días)</label><input type="number" min="1" class="input" x-model="modal.editForm.durationDays" /></div>
+                </div>
+                <div class="text-xs text-slate-500 bg-slate-50 dark:bg-slate-700 rounded-xl px-3 py-2" x-show="modal.editForm.startDate && modal.editForm.durationDays">
+                  Fin estimado: <strong x-text="formatDate(estimatedEndDate(modal.editForm.startDate, modal.editForm.durationDays))"></strong>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div><label class="label">Stock (unidades)</label><input type="number" class="input" x-model="modal.editForm.stock" /></div>
+                  <div>
+                    <label class="label">Estado</label>
+                    <select class="input" x-model="modal.editForm.active">
+                      <option :value="true">Activo</option>
+                      <option :value="false">Terminado</option>
+                    </select>
+                  </div>
+                </div>
+                <div><label class="label">Notas</label><textarea class="input" rows="2" x-model="modal.editForm.notes"></textarea></div>
+              </div>
+
+              <!-- Botones edición -->
+              <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700 flex gap-2">
+                <button class="btn-secondary flex-1 justify-center" @click="modal.editing = false">← Cancelar</button>
+                <button class="btn-primary flex-1 justify-center" @click="saveEditMedicamento()">💾 Guardar cambios</button>
+              </div>
             </div>
+
           </div>
         </template>
 

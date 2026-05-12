@@ -119,7 +119,7 @@ window.tailwind = window.tailwind || {};
         treatmentLogs: [],
 
         // Modal
-        modal: { show: false, type: '', entry: null },
+        modal: { show: false, type: '', entry: null, editing: false, editForm: {} },
 
         // JSON loader
         jsonLoader: { show: false, text: '', error: '' },
@@ -1285,12 +1285,65 @@ window.tailwind = window.tailwind || {};
         openModal(type) {
           const today = new Date().toISOString().split('T')[0];
           this.jsonLoader = { show: false, text: '', error: '' };
+          this.modal.editing = false;
+          this.modal.editForm = {};
           this.form = { date: today, active: true };
           if (type === 'consulta') this.form = { date: today, controlType: 'Consulta general', title: '', savedDoctor: '', doctor: '', specialty: '', savedCenter: '', hospital: '', nextControlDate: '', nextControlPreset: '', physicalItems: [], medicationItems: [], examOrderItems: [], diagnosis: '', physicalExam: '', generalInstructions: '', active: true };
           if (type === 'medicamento') this.form = { name: '', dose: '', frequency: 'Diaria', startDate: today, durationDays: 10, stock: '', active: true };
           if (type === 'control') this.form = { title: '', lastDate: today, frequencyMonths: 12, icon: '🩺', active: true };
           if (type === 'receta') this.form = { name: '', dose: '', frequencyHours: 12, startTime: '08:00', durationDays: 7, startDate: today, endDate: '', expirationDate: '', active: true };
           this.modal = { show: true, type, entry: null };
+        },
+
+        // ---- EDICIÓN MEDICAMENTO ----
+        openEditMedicamento(entry) {
+          this.modal.editing = true;
+          this.modal.editForm = {
+            name:         entry.name         || '',
+            dose:         entry.dose         || '',
+            frequency:    entry.frequency    || 'Diaria',
+            startDate:    entry.startDate?.toDate ? entry.startDate.toDate().toISOString().split('T')[0] : (entry.startDate || ''),
+            durationDays: entry.durationDays || '',
+            stock:        entry.stock        || '',
+            active:       entry.active !== undefined ? entry.active : true,
+            notes:        entry.notes        || '',
+          };
+        },
+
+        async saveEditMedicamento() {
+          const entry = this.modal.entry;
+          if (!this.modal.editForm.name) { this.showToast('El nombre es obligatorio', 'error'); return; }
+
+          // Recalculate endDate if startDate or durationDays changed
+          const ef = { ...this.modal.editForm };
+          if (ef.startDate && ef.durationDays) {
+            ef.endDate = this.estimatedEndDate(ef.startDate, ef.durationDays);
+          }
+
+          // Strip empty fields
+          const patch = {};
+          for (const [k, v] of Object.entries(ef)) {
+            if (v !== '' && v !== null && v !== undefined) patch[k] = v;
+          }
+
+          try {
+            if (isFirebaseReady && this.currentUser) {
+              await this.profilePath().collection('medicamentos').doc(entry.id).set(patch, { merge: true });
+            } else if (localDB) {
+              await localDB.entries.update(entry.id, patch);
+            }
+
+            // Update local state
+            this.medicamentos = this.medicamentos.map(m =>
+              m.id === entry.id ? { ...m, ...patch } : m
+            );
+            // Update the entry shown in modal
+            this.modal.entry = { ...entry, ...patch };
+            this.modal.editing = false;
+            this.showToast('Medicamento actualizado ✓');
+          } catch(e) {
+            this.showToast('Error al guardar: ' + e.message, 'error');
+          }
         },
 
         // ---- CARGADOR JSON ----
