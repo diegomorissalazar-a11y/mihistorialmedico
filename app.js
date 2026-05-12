@@ -67,9 +67,15 @@ window.tailwind = window.tailwind || {};
         auth = firebase.auth();
         storage = firebase.storage();
         isFirebaseReady = true;
-        db.enablePersistence({ synchronizeTabs: true }).catch(err => {
-          if (err.code === 'failed-precondition' || err.code === 'unimplemented') {
-            console.warn('Firestore offline persistence unavailable:', err.code);
+        // Offline persistence — new API (compat SDK)
+        try {
+          firebase.firestore().settings({ cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED });
+        } catch(_) {}
+        db.enableMultiTabIndexedDbPersistence().catch(err => {
+          if (err.code === 'failed-precondition') {
+            db.enableIndexedDbPersistence().catch(() => {});
+          } else if (err.code !== 'unimplemented') {
+            console.warn('Firestore offline persistence:', err.code);
           }
         });
       } catch(e) {
@@ -91,7 +97,7 @@ window.tailwind = window.tailwind || {};
         currentUser: null,
         currentProfile: null,
         profiles: [],
-        newProfileForm: { name: '', relation: 'Yo', birthdate: '', emoji: '👤', color: '#0ea5e9' },
+        newProfileForm: { name: '', relation: 'Yo', birthdate: '', sex: 'M', emoji: '👤', color: '#0ea5e9' },
 
         // Section
         activeSection: 'dashboard',
@@ -275,7 +281,7 @@ window.tailwind = window.tailwind || {};
           }
           this.profiles.push(p);
           this.modal.show = false;
-          this.newProfileForm = { name: '', relation: 'Yo', birthdate: '', emoji: '👤', color: '#0ea5e9' };
+          this.newProfileForm = { name: '', relation: 'Yo', birthdate: '', sex: 'M', emoji: '👤', color: '#0ea5e9' };
           this.showToast('Perfil creado ✓');
         },
 
@@ -371,10 +377,13 @@ window.tailwind = window.tailwind || {};
           const today = new Date().toISOString().split('T')[0];
           if (isFirebaseReady && this.currentUser && this.currentProfile) {
             const snap = await this.profilePath().collection('medTaken').where('date', '==', today).get();
-            this.medTakenToday = snap.docs.map(d => d.data().medId);
+            this.medTakenToday = snap.docs.map(d => ({
+              medId: d.data().medId,
+              doseIdx: d.data().doseIdx ?? 0
+            }));
           } else {
             const r = await localDB.medTaken.filter(m => m.date === today && m.profileId === this.currentProfile?.id).toArray();
-            this.medTakenToday = r.map(m => m.medId);
+            this.medTakenToday = r.map(m => ({ medId: m.medId, doseIdx: m.doseIdx ?? 0 }));
           }
         },
 
@@ -689,22 +698,33 @@ window.tailwind = window.tailwind || {};
         },
 
         // ---- MEDICAMENTOS TOMA ----
+        // medTakenToday = array of {medId, doseIdx} objects
         isTakenToday(medId) {
-          return this.medTakenToday.includes(medId);
+          return this.medTakenToday.some(t => t.medId === medId);
         },
 
-        async toggleMedTakenById(medId, name, dose) {
+        isDoseTaken(medId, doseIdx) {
+          return this.medTakenToday.some(t => t.medId === medId && t.doseIdx === doseIdx);
+        },
+
+        medTakenCountToday(medId) {
+          return this.medTakenToday.filter(t => t.medId === medId).length;
+        },
+
+        async toggleDose(medId, name, dose, doseIdx, time) {
           const today = new Date().toISOString().split('T')[0];
-          const already = this.isTakenToday(medId);
+          const already = this.isDoseTaken(medId, doseIdx);
+          const doseKey = `${medId}_${doseIdx}`;
           if (already) {
-            this.medTakenToday = this.medTakenToday.filter(id => id !== medId);
+            this.medTakenToday = this.medTakenToday.filter(t => !(t.medId === medId && t.doseIdx === doseIdx));
             if (isFirebaseReady && this.currentUser) {
-              const snap = await this.profilePath().collection('medTaken').where('medId','==',medId).where('date','==',today).get();
+              const snap = await this.profilePath().collection('medTaken')
+                .where('medId','==',medId).where('doseIdx','==',doseIdx).where('date','==',today).get();
               snap.docs.forEach(d => d.ref.delete());
             }
           } else {
-            this.medTakenToday.push(medId);
-            const data = { medId, date: today, name, dose, profileId: this.currentProfile.id };
+            this.medTakenToday.push({ medId, doseIdx });
+            const data = { medId, doseIdx, doseKey, date: today, time, name, dose, profileId: this.currentProfile.id };
             if (isFirebaseReady && this.currentUser) {
               await this.profilePath().collection('medTaken').add(data);
             } else {
@@ -713,7 +733,9 @@ window.tailwind = window.tailwind || {};
           }
         },
 
-        toggleMedTaken(med) { this.toggleMedTakenById(med.id, med.name, med.dose); },
+        // Legacy compat
+        async toggleMedTakenById(medId, name, dose) { await this.toggleDose(medId, name, dose, 0, '08:00'); },
+        toggleMedTaken(med) { this.toggleDose(med.id, med.name, med.dose, 0, '08:00'); },
 
 
         // ---- PLAN, VACUNAS Y RECETAS ----
@@ -883,6 +905,115 @@ window.tailwind = window.tailwind || {};
           };
           this.openModal('control');
           this.form = { ...this.form, ...(templates[type] || {}) };
+        },
+
+        // ---- FRECUENCIA → DOSIS/DÍA + HORARIOS ----
+        FREQUENCY_MAP: {
+          'Cada 6 horas':   { hours: 6,  doses: 4, times: ['06:00','10:00','14:00','18:00'] },
+          'Cada 8 horas':   { hours: 8,  doses: 3, times: ['06:00','12:00','18:00'] },
+          'Cada 12 horas':  { hours: 12, doses: 2, times: ['06:00','18:00'] },
+          'Diaria':         { hours: 24, doses: 1, times: ['08:00'] },
+          'Cada 24 horas':  { hours: 24, doses: 1, times: ['08:00'] },
+          'Cada 2 días':    { hours: 48, doses: 1, times: ['08:00'] },
+          'Semanal':        { hours: 168,doses: 1, times: ['08:00'] },
+          'Según necesidad':{ hours: 0,  doses: 0, times: [] },
+        },
+
+        dosesPerDay(frequency) {
+          return this.FREQUENCY_MAP[frequency]?.doses ?? 1;
+        },
+
+        scheduledTimes(frequency) {
+          return this.FREQUENCY_MAP[frequency]?.times ?? ['08:00'];
+        },
+
+        takenCountToday(medId) {
+          return this.medTakenToday.filter(id => id === medId).length;
+        },
+
+        // ---- PERCENTILES OMS (niños varones y mujeres 0–24 meses) ----
+        // Fuente: OMS Growth Standards 2006 — adoptadas por Minsal Chile
+        // Datos: peso (kg) y talla (cm) por mes, percentiles P3/P15/P50/P85/P97
+        WHO_WEIGHT_M: {
+          // mes: [P3, P15, P50, P85, P97]
+          0:[2.5,2.9,3.3,3.9,4.3], 1:[3.4,3.9,4.5,5.1,5.7], 2:[4.4,4.9,5.6,6.3,7.1],
+          3:[5.1,5.7,6.4,7.2,8.0], 4:[5.6,6.2,7.0,7.9,8.7], 5:[6.0,6.7,7.5,8.4,9.3],
+          6:[6.4,7.1,7.9,8.8,9.8], 7:[6.7,7.4,8.3,9.2,10.2], 8:[6.9,7.7,8.6,9.6,10.7],
+          9:[7.1,7.9,8.9,9.9,11.0], 10:[7.4,8.2,9.2,10.2,11.4], 11:[7.6,8.4,9.4,10.5,11.7],
+          12:[7.7,8.6,9.6,10.8,12.0], 13:[8.0,8.8,9.9,11.0,12.3], 14:[8.2,9.1,10.1,11.3,12.6],
+          15:[8.4,9.3,10.4,11.5,12.8], 16:[8.6,9.5,10.6,11.8,13.2], 17:[8.8,9.7,10.9,12.1,13.5],
+          18:[8.9,9.9,11.1,12.4,13.7], 19:[9.1,10.1,11.3,12.6,14.0], 20:[9.3,10.3,11.5,12.8,14.3],
+          21:[9.5,10.5,11.8,13.1,14.6], 22:[9.7,10.7,12.0,13.4,14.9], 23:[9.9,10.9,12.2,13.6,15.2],
+          24:[10.1,11.1,12.4,13.9,15.5]
+        },
+        WHO_HEIGHT_M: {
+          0:[46.1,47.9,49.9,51.8,53.4], 1:[51.1,53.0,54.7,56.5,57.6], 2:[54.7,56.4,58.4,60.4,62.4],
+          3:[57.6,59.4,61.4,63.5,65.5], 4:[60.0,61.8,63.9,65.9,67.8], 5:[61.7,63.8,65.9,68.0,69.9],
+          6:[63.3,65.5,67.6,69.8,71.6], 7:[64.8,67.0,69.2,71.3,73.2], 8:[66.2,68.4,70.6,72.8,74.7],
+          9:[67.5,69.7,72.0,74.2,76.2], 10:[68.7,71.0,73.3,75.6,77.6], 11:[69.9,72.2,74.5,76.9,78.9],
+          12:[71.0,73.4,75.7,78.1,80.2], 13:[72.1,74.5,76.9,79.3,81.4], 14:[73.1,75.6,78.0,80.5,82.6],
+          15:[74.1,76.6,79.1,81.6,83.7], 16:[75.0,77.6,80.2,82.7,84.9], 17:[76.0,78.6,81.2,83.7,86.0],
+          18:[76.9,79.6,82.3,84.8,87.1], 19:[77.7,80.5,83.2,85.8,88.1], 20:[78.6,81.4,84.2,86.8,89.1],
+          21:[79.4,82.3,85.1,87.8,90.1], 22:[80.2,83.1,86.0,88.7,91.1], 23:[81.0,83.9,86.9,89.6,92.1],
+          24:[81.7,84.8,87.8,90.6,93.0]
+        },
+        WHO_WEIGHT_F: {
+          0:[2.4,2.8,3.2,3.7,4.2], 1:[3.2,3.6,4.2,4.8,5.4], 2:[4.0,4.5,5.1,5.8,6.6],
+          3:[4.6,5.2,5.8,6.6,7.5], 4:[5.1,5.7,6.4,7.2,8.2], 5:[5.5,6.1,6.9,7.8,8.8],
+          6:[5.8,6.5,7.3,8.2,9.3], 7:[6.1,6.8,7.6,8.6,9.8], 8:[6.3,7.0,7.9,9.0,10.2],
+          9:[6.6,7.3,8.2,9.3,10.5], 10:[6.8,7.5,8.5,9.6,10.9], 11:[7.0,7.7,8.7,9.9,11.2],
+          12:[7.1,7.9,8.9,10.1,11.5], 13:[7.3,8.1,9.2,10.4,11.8], 14:[7.5,8.3,9.4,10.7,12.2],
+          15:[7.7,8.5,9.6,11.0,12.5], 16:[7.9,8.7,9.9,11.2,12.8], 17:[8.1,8.9,10.1,11.5,13.1],
+          18:[8.3,9.1,10.4,11.8,13.5], 19:[8.5,9.3,10.6,12.1,13.8], 20:[8.7,9.5,10.8,12.3,14.1],
+          21:[8.8,9.7,11.1,12.6,14.4], 22:[9.0,9.9,11.3,12.9,14.7], 23:[9.2,10.2,11.5,13.1,15.0],
+          24:[9.4,10.4,11.8,13.4,15.3]
+        },
+        WHO_HEIGHT_F: {
+          0:[45.6,47.3,49.1,51.0,52.9], 1:[50.0,51.7,53.7,55.6,57.4], 2:[53.2,55.0,57.1,59.1,61.1],
+          3:[55.8,57.7,59.8,61.9,63.9], 4:[58.0,60.0,62.1,64.3,66.2], 5:[59.6,61.8,64.0,66.2,68.2],
+          6:[61.2,63.5,65.7,68.0,70.0], 7:[62.7,65.0,67.3,69.7,71.6], 8:[64.0,66.4,68.7,71.1,73.2],
+          9:[65.3,67.7,70.1,72.6,74.7], 10:[66.5,69.0,71.5,74.0,76.1], 11:[67.7,70.3,72.8,75.3,77.5],
+          12:[68.9,71.4,74.0,76.6,78.9], 13:[70.0,72.6,75.2,77.9,80.2], 14:[71.0,73.7,76.4,79.1,81.4],
+          15:[72.0,74.8,77.5,80.3,82.7], 16:[73.0,75.8,78.6,81.4,83.9], 17:[74.0,76.8,79.7,82.6,85.1],
+          18:[75.0,77.8,80.7,83.7,86.2], 19:[75.8,78.8,81.7,84.7,87.3], 20:[76.7,79.7,82.7,85.7,88.4],
+          21:[77.5,80.5,83.7,86.7,89.4], 22:[78.4,81.4,84.6,87.7,90.4], 23:[79.2,82.3,85.5,88.6,91.4],
+          24:[80.0,83.2,86.4,89.5,92.4]
+        },
+
+        getAgeInMonths(measurement) {
+          if (!measurement?.date || !this.currentProfile?.birthdate) return null;
+          const mDate = measurement.date?.toDate ? measurement.date.toDate() : new Date(measurement.date);
+          const bDate = new Date(this.currentProfile.birthdate);
+          const months = (mDate.getFullYear() - bDate.getFullYear()) * 12 + (mDate.getMonth() - bDate.getMonth());
+          return Math.max(0, Math.min(24, Math.round(months)));
+        },
+
+        getPercentile(metric, measurement) {
+          if (!measurement || !this.currentProfile?.sex || !this.currentProfile?.birthdate) return null;
+          const value = parseFloat(measurement[metric]);
+          if (!value || isNaN(value)) return null;
+          const months = this.getAgeInMonths(measurement);
+          if (months === null || months > 24) return null;
+          const sex = this.currentProfile.sex;
+          const table = metric === 'weight'
+            ? (sex === 'M' ? this.WHO_WEIGHT_M : this.WHO_WEIGHT_F)
+            : (sex === 'M' ? this.WHO_HEIGHT_M : this.WHO_HEIGHT_F);
+          const row = table[months];
+          if (!row) return null;
+          const [p3, p15, p50, p85, p97] = row;
+          if (value < p3)  return 3;
+          if (value < p15) return 15;
+          if (value < p50) return 50;
+          if (value < p85) return 75;
+          if (value < p97) return 85;
+          return 97;
+        },
+
+        percentileColor(p) {
+          if (!p) return '';
+          if (p <= 3 || p >= 97) return 'text-red-500';
+          if (p <= 15 || p >= 85) return 'text-amber-500';
+          return 'text-green-600';
         },
 
         // ---- FUNCIONES LINKED DESDE CONSULTA ----
@@ -1142,7 +1273,10 @@ window.tailwind = window.tailwind || {};
 
         get todayMeds() {
           return this.medicamentos.filter(m => m.active).map(m => ({
-            ...m, taken: this.medTakenToday.includes(m.id)
+            ...m,
+            taken: this.isTakenToday(m.id),
+            takenCount: this.medTakenCountToday(m.id),
+            totalDoses: this.dosesPerDay(m.frequency),
           }));
         },
 
@@ -1428,23 +1562,15 @@ window.tailwind = window.tailwind || {};
       };
     }
 
-    // ---- SERVICE WORKER + PWA MANIFEST ----
+    // ---- SERVICE WORKER ----
+    // El SW se registra desde sw.js (archivo separado).
+    // El blob SW no funciona en GitHub Pages — usa el archivo sw.js incluido en el zip.
     function registerServiceWorker() {
       if (!('serviceWorker' in navigator)) return;
       window.addEventListener('load', () => {
-        const swCode = `
-const CACHE = 'mihm-v2.10';
-const ASSETS = ['./', './index.html', './styles.css', './app.js'];
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).catch(() => undefined)));
-});
-self.addEventListener('fetch', e => {
-  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
-});
-        `;
-        const blob = new Blob([swCode], { type: 'application/javascript' });
-        const url = URL.createObjectURL(blob);
-        navigator.serviceWorker.register(url).catch(e => console.warn('SW:', e));
+        navigator.serviceWorker.register('./sw.js').catch(() => {
+          // Silencioso si no existe sw.js — la app funciona igual sin SW
+        });
       });
     }
 
