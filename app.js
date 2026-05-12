@@ -120,6 +120,9 @@ window.tailwind = window.tailwind || {};
 
         // Modal
         modal: { show: false, type: '', entry: null },
+
+        // JSON loader
+        jsonLoader: { show: false, text: '', error: '' },
         form: {},
 
         // Toast
@@ -1200,12 +1203,51 @@ window.tailwind = window.tailwind || {};
         // ---- MODALS ----
         openModal(type) {
           const today = new Date().toISOString().split('T')[0];
+          this.jsonLoader = { show: false, text: '', error: '' };
           this.form = { date: today, active: true };
           if (type === 'consulta') this.form = { date: today, controlType: 'Consulta general', title: '', savedDoctor: '', doctor: '', specialty: '', savedCenter: '', hospital: '', nextControlDate: '', nextControlPreset: '', physicalItems: [], medicationItems: [], examOrderItems: [], diagnosis: '', physicalExam: '', generalInstructions: '', active: true };
           if (type === 'medicamento') this.form = { name: '', dose: '', frequency: 'Diaria', startDate: today, durationDays: 10, stock: '', active: true };
           if (type === 'control') this.form = { title: '', lastDate: today, frequencyMonths: 12, icon: '🩺', active: true };
           if (type === 'receta') this.form = { name: '', dose: '', frequencyHours: 12, startTime: '08:00', durationDays: 7, startDate: today, endDate: '', expirationDate: '', active: true };
           this.modal = { show: true, type, entry: null };
+        },
+
+        // ---- CARGADOR JSON ----
+        loadConsultaFromJSON() {
+          this.jsonLoader.error = '';
+          let data;
+          try {
+            data = JSON.parse(this.jsonLoader.text.trim());
+          } catch(e) {
+            this.jsonLoader.error = 'JSON inválido. Verifica el formato y vuelve a intentarlo.';
+            return;
+          }
+
+          const today = new Date().toISOString().split('T')[0];
+
+          // Mapeo de campos al formato del formulario
+          this.form = {
+            date:               data.date              || today,
+            title:              data.title             || '',
+            controlType:        data.visitType         || data.controlType || 'Consulta general',
+            doctor:             data.doctor            || '',
+            specialty:          data.specialty         || '',
+            hospital:           data.hospital          || data.center || '',
+            diagnosis:          data.diagnosis         || '',
+            generalInstructions: data.generalInstructions || data.notes || '',
+            nextControlDate:    data.nextControlDate   || '',
+
+            // Ítems estructurados
+            physicalItems:    Array.isArray(data.physicalItems)    ? data.physicalItems    : [],
+            medicationItems:  Array.isArray(data.medicationItems)  ? data.medicationItems  : [],
+            examOrderItems:   Array.isArray(data.examOrderItems)   ? data.examOrderItems   : [],
+
+            active: true,
+          };
+
+          this.jsonLoader.show = false;
+          this.jsonLoader.text = '';
+          this.showToast('Datos cargados ✓ — revisa y guarda');
         },
 
         openEntryDetail(entry) {
