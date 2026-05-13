@@ -364,7 +364,15 @@ window.tailwind = window.tailwind || {};
           if (!this.currentProfile) return;
           let data = [];
           if (isFirebaseReady && this.currentUser) {
-            const snap = await this.profilePath().collection(section).orderBy('date', 'desc').limit(200).get();
+            // medicamentos use startDate, others use date
+            const orderField = section === 'medicamentos' ? 'startDate' : 'date';
+            let snap;
+            try {
+              snap = await this.profilePath().collection(section).orderBy(orderField, 'desc').limit(200).get();
+            } catch(e) {
+              // fallback: no ordering if index missing
+              snap = await this.profilePath().collection(section).limit(200).get();
+            }
             data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
           } else {
             const sectionCategory = { examenes:'examen', medicamentos:'medicamento', consultas:'consulta', vacunas:'vacuna', alergias:'alergia', cirugias:'cirugia', mediciones:'medicion', recordatorios:'recordatorio', controles:'control', recetas:'receta', compras:'compra', tomas:'toma' }[section] || section;
