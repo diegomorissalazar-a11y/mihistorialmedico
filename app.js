@@ -506,6 +506,7 @@ window.tailwind = window.tailwind || {};
           // Build clean object
           const clean = {};
           for (const [k, v] of Object.entries(f)) {
+            if (Array.isArray(v)) { clean[k] = v; continue; } // always preserve arrays
             if (v !== '' && v !== null && v !== undefined) clean[k] = v;
           }
           if (!clean.date) clean.date = new Date().toISOString().split('T')[0];
@@ -1046,20 +1047,37 @@ window.tailwind = window.tailwind || {};
         },
 
         async createLinkedMedicationsFromConsulta(consulta) {
-          if (!Array.isArray(consulta.medicationItems) || consulta.medicationItems.length === 0) return;
-          for (const item of consulta.medicationItems) {
-            if (!item.name) continue;
+          const items = consulta.medicationItems;
+          if (!Array.isArray(items) || items.length === 0) return;
+          for (const item of items) {
+            // Normalize: accept name OR savedName (from form autocomplete)
+            const name = item.name || item.savedName || '';
+            if (!name) continue;
+
+            // Normalize frequency — accept text variants
+            const freq = item.frequency || item.durationText || 'Diaria';
+
             const med = {
-              category: 'medicamento', profileId: this.currentProfile.id,
-              name: item.name, dose: item.dose || '', frequency: item.frequency || 'Diaria',
-              route: item.route || '', notes: item.notes || '',
-              startDate: consulta.date, active: true,
-              doctor: consulta.doctor || '',
+              category: 'medicamento',
+              profileId: this.currentProfile.id,
+              name,
+              dose:      item.dose      || '',
+              frequency: freq,
+              route:     item.route     || '',
+              notes:     item.notes     || '',
+              startDate: consulta.date,
+              active:    true,
+              doctor:    consulta.doctor    || '',
+              hospital:  consulta.hospital  || '',
+              sourceConsultaTitle: consulta.title || '',
             };
-            if (item.durationDays) {
-              med.durationDays = Number(item.durationDays);
-              med.endDate = this.estimatedEndDate(consulta.date, item.durationDays);
+
+            const days = item.durationDays ? Number(item.durationDays) : null;
+            if (days) {
+              med.durationDays = days;
+              med.endDate = this.estimatedEndDate(consulta.date, days);
             }
+
             let medId;
             if (isFirebaseReady && this.currentUser) {
               const ref = await this.profilePath().collection('medicamentos').add({ ...med, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
@@ -1073,15 +1091,24 @@ window.tailwind = window.tailwind || {};
         },
 
         async createLinkedExamOrdersFromConsulta(consulta) {
-          if (!Array.isArray(consulta.examOrderItems) || consulta.examOrderItems.length === 0) return;
-          for (const item of consulta.examOrderItems) {
-            if (!item.name) continue;
+          const items = consulta.examOrderItems;
+          if (!Array.isArray(items) || items.length === 0) return;
+          for (const item of items) {
+            const name = item.name || item.savedName || '';
+            if (!name) continue;
             const order = {
-              category: 'examen', profileId: this.currentProfile.id,
-              title: item.name, subtype: item.type || 'Otro',
-              notes: item.notes || '', date: consulta.date,
-              status: 'Pendiente', doctor: consulta.doctor || '',
-              sourceConsultaId: consulta.id || '',
+              category:  'examen',
+              profileId: this.currentProfile.id,
+              title:     name,
+              name:      name,
+              subtype:   item.type || item.subtype || 'Otro',
+              notes:     item.notes || '',
+              date:      consulta.date,
+              status:    'Pendiente',
+              doctor:    consulta.doctor  || '',
+              hospital:  consulta.hospital || '',
+              sourceConsultaId:    consulta.id    || '',
+              sourceConsultaTitle: consulta.title || '',
             };
             let orderId;
             if (isFirebaseReady && this.currentUser) {
