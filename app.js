@@ -384,6 +384,19 @@ window.tailwind = window.tailwind || {};
             mediciones: 'mediciones', documentos: 'documents', recordatorios: 'reminders', ordenesExamenes: 'examOrders',
             controles: 'controles', recetas: 'recetas', compras: 'compras', tomas: 'treatmentLogs'
           };
+
+          // Sort client-side: newest first using the relevant date field
+          const dateField = section === 'medicamentos' ? 'startDate' : 'date';
+          data.sort((a, b) => {
+            const getDate = (x) => {
+              const v = x[dateField];
+              if (!v) return 0;
+              if (v?.toDate) return v.toDate().getTime();
+              return new Date(v).getTime();
+            };
+            return getDate(b) - getDate(a); // desc: newest first
+          });
+
           this[mapKey[section]] = data;
         },
 

@@ -141,3 +141,6 @@ Tablas OMS 2006 (Minsal Chile) para 0–24 meses. Requiere sexo y fecha de nacim
 - Fix KPI última medición: usa orden cronológico real, no el orden de carga
 - Botón ✏️ Editar en tarjetas de medicamento (activos y vencidos)
 - Canvas de gráficos con altura explícita para correcto renderizado
+
+### v20 — 13/05/2026
+- Todas las secciones ordenadas cronológicamente de más nuevo a más antiguo (orden del cliente, independiente del orden de carga en Firestore)
