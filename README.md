@@ -134,3 +134,10 @@ Tablas OMS 2006 (Minsal Chile) para 0–24 meses. Requiere sexo y fecha de nacim
 
 ### v18 — 13/05/2026
 - Fix medicamentos no aparecían en la sección: Firestore orderBy usaba campo `date` pero medicamentos usan `startDate` — corregido con campo correcto por sección + fallback sin ordenamiento si falta índice
+
+### v19 — 13/05/2026
+- Fix tooltip gráfico: ahora aparece al pasar por cualquier punto (mode index, intersect false)
+- Fix mediciones duplicadas en gráfico: deduplica por fecha, mantiene un valor por día
+- Fix KPI última medición: usa orden cronológico real, no el orden de carga
+- Botón ✏️ Editar en tarjetas de medicamento (activos y vencidos)
+- Canvas de gráficos con altura explícita para correcto renderizado

@@ -1211,13 +1211,22 @@ window.tailwind = window.tailwind || {};
           const el = document.getElementById(canvasId);
           if (!el) return;
           this.destroyChart(canvasId);
-          const series = [...this.mediciones]
-            .filter(m => m[key] !== undefined && m[key] !== '' && m[key] !== null && !isNaN(Number(m[key])))
-            .sort((a, b) => {
-              const da = a.date?.toDate ? a.date.toDate() : new Date(a.date);
-              const db2 = b.date?.toDate ? b.date.toDate() : new Date(b.date);
-              return da - db2;
-            });
+          // Deduplicate by date (keep highest value per date) and sort chronologically
+          const seen = new Map();
+          for (const m of this.mediciones) {
+            const val = Number(m[key]);
+            if (m[key] === undefined || m[key] === '' || m[key] === null || isNaN(val)) continue;
+            const d = m.date?.toDate ? m.date.toDate() : new Date(m.date);
+            const dateKey = d.toISOString().split('T')[0];
+            if (!seen.has(dateKey) || val > Number(seen.get(dateKey)[key])) {
+              seen.set(dateKey, m);
+            }
+          }
+          const series = [...seen.values()].sort((a, b) => {
+            const da = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+            const db2 = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+            return da - db2;
+          });
           if (series.length < 1) return;
 
           const labels = series.map(m => this.formatDate(m.date?.toDate ? m.date.toDate() : new Date(m.date)));
@@ -1252,9 +1261,11 @@ window.tailwind = window.tailwind || {};
             options: {
               responsive: true,
               maintainAspectRatio: false,
+              interaction: { mode: 'index', intersect: false },
               plugins: {
                 legend: { display: false },
                 tooltip: {
+                  displayColors: false,
                   callbacks: {
                     title: (items) => labels[items[0].dataIndex],
                     label: (item) => {
@@ -1538,6 +1549,14 @@ window.tailwind = window.tailwind || {};
           if (m?.cholesterol) parts.push('Colesterol ' + m.cholesterol + ' mg/dL');
           if (m?.weight && m?.height) parts.push('IMC: ' + this.calcIMC(m));
           return parts.length ? parts.join(' · ') : 'Sin indicadores';
+        },
+
+        get sortedMediciones() {
+          return [...this.mediciones].sort((a, b) => {
+            const da = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+            const db2 = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+            return db2 - da; // newest first
+          });
         },
 
         calcIMC(m, raw = false) {

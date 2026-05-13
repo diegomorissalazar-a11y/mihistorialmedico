@@ -620,7 +620,10 @@
                         <div class="space-y-2">
                           <div class="flex items-center justify-between">
                             <span class="text-xs text-red-500 font-medium">Tratamiento finalizado</span>
-                            <button class="text-xs text-slate-400 hover:text-red-400" @click="deleteEntry(m)">Eliminar</button>
+                            <div class="flex gap-2">
+                              <button class="text-xs text-sky-500 hover:text-sky-600" @click="openEditMedicamento(m); modal.show=true; modal.type='detail'; modal.entry=m;">✏️ Editar</button>
+                              <button class="text-xs text-slate-400 hover:text-red-400" @click="deleteEntry(m)">Eliminar</button>
+                            </div>
                           </div>
                           <button class="w-full py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-sm font-semibold transition flex items-center justify-center gap-2"
                                   @click="finishTreatment(m)">
@@ -638,7 +641,10 @@
                               <span :class="medTakenCountToday(m.id) >= dosesPerDay(m.frequency) ? 'text-green-600' : 'text-amber-600'"
                                 x-text="medTakenCountToday(m.id) + ' / ' + dosesPerDay(m.frequency)"></span>
                             </span>
-                            <button class="text-xs text-slate-400 hover:text-red-400" @click="deleteEntry(m)">Eliminar</button>
+                            <div class="flex gap-2">
+                              <button class="text-xs text-sky-500 hover:text-sky-600" @click="openEditMedicamento(m); modal.show=true; modal.type='detail'; modal.entry=m;">✏️ Editar</button>
+                              <button class="text-xs text-slate-400 hover:text-red-400" @click="deleteEntry(m)">Eliminar</button>
+                            </div>
                           </div>
                           <div class="flex flex-wrap gap-1.5">
                             <template x-for="(time, idx) in scheduledTimes(m.frequency)" :key="idx">
@@ -1059,28 +1065,28 @@
           </div>
 
           <!-- KPIs última medición -->
-          <div class="card" x-show="mediciones.length > 0">
+          <div class="card" x-show="sortedMediciones.length > 0">
             <div class="flex items-center justify-between mb-3">
               <h3 class="text-sm font-semibold text-slate-500">Última medición</h3>
-              <span class="text-xs text-slate-400" x-text="formatDate(mediciones[0]?.date?.toDate ? mediciones[0].date.toDate() : new Date(mediciones[0]?.date))"></span>
+              <span class="text-xs text-slate-400" x-text="formatDate(sortedMediciones[0]?.date?.toDate ? sortedMediciones[0].date.toDate() : new Date(sortedMediciones[0]?.date))"></span>
             </div>
             <div class="grid grid-cols-3 gap-4 text-center">
               <div>
-                <div class="text-2xl font-bold text-sky-600" x-text="(mediciones[0]?.weight || '--') + ' kg'"></div>
+                <div class="text-2xl font-bold text-sky-600" x-text="(sortedMediciones[0]?.weight || '--') + ' kg'"></div>
                 <div class="text-xs text-slate-400">Peso</div>
-                <div class="text-xs font-semibold mt-0.5" x-show="getPercentile('weight', mediciones[0])"
-                  :class="percentileColor(getPercentile('weight', mediciones[0]))"
-                  x-text="'P' + getPercentile('weight', mediciones[0])"></div>
+                <div class="text-xs font-semibold mt-0.5" x-show="getPercentile('weight', sortedMediciones[0])"
+                  :class="percentileColor(getPercentile('weight', sortedMediciones[0]))"
+                  x-text="'P' + getPercentile('weight', sortedMediciones[0])"></div>
               </div>
               <div>
-                <div class="text-2xl font-bold text-sky-600" x-text="(mediciones[0]?.height || '--') + ' cm'"></div>
+                <div class="text-2xl font-bold text-sky-600" x-text="(sortedMediciones[0]?.height || '--') + ' cm'"></div>
                 <div class="text-xs text-slate-400">Talla</div>
-                <div class="text-xs font-semibold mt-0.5" x-show="getPercentile('height', mediciones[0])"
-                  :class="percentileColor(getPercentile('height', mediciones[0]))"
-                  x-text="'P' + getPercentile('height', mediciones[0])"></div>
+                <div class="text-xs font-semibold mt-0.5" x-show="getPercentile('height', sortedMediciones[0])"
+                  :class="percentileColor(getPercentile('height', sortedMediciones[0]))"
+                  x-text="'P' + getPercentile('height', sortedMediciones[0])"></div>
               </div>
               <div>
-                <div class="text-2xl font-bold text-sky-600" x-text="calcIMC(mediciones[0])"></div>
+                <div class="text-2xl font-bold text-sky-600" x-text="calcIMC(sortedMediciones[0])"></div>
                 <div class="text-xs text-slate-400">IMC</div>
               </div>
             </div>
@@ -1093,14 +1099,14 @@
           <div class="card" x-show="mediciones.filter(m=>m.weight).length > 1">
             <h3 class="text-sm font-semibold mb-1">📈 Evolución del peso</h3>
             <p class="text-xs text-slate-400 mb-3">Toca cada punto para ver la variación respecto al control anterior</p>
-            <canvas id="weightGrowthChart" height="160"></canvas>
+            <canvas id="weightGrowthChart" style="height:200px;width:100%"></canvas>
           </div>
 
           <!-- Gráfico de crecimiento — Talla con delta tooltip -->
           <div class="card" x-show="mediciones.filter(m=>m.height).length > 1">
             <h3 class="text-sm font-semibold mb-1">📈 Evolución de la talla</h3>
             <p class="text-xs text-slate-400 mb-3">Toca cada punto para ver la variación respecto al control anterior</p>
-            <canvas id="heightGrowthChart" height="160"></canvas>
+            <canvas id="heightGrowthChart" style="height:200px;width:100%"></canvas>
           </div>
 
           <!-- Otros gráficos de métricas -->
