@@ -67,15 +67,12 @@ window.tailwind = window.tailwind || {};
         auth = firebase.auth();
         storage = firebase.storage();
         isFirebaseReady = true;
-        // Offline persistence — new API (compat SDK)
-        try {
-          firebase.firestore().settings({ cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED });
-        } catch(_) {}
-        db.enableMultiTabIndexedDbPersistence().catch(err => {
+        // Offline persistence — Firebase v9 compat
+        db.enablePersistence({ synchronizeTabs: true }).catch(err => {
           if (err.code === 'failed-precondition') {
-            db.enableIndexedDbPersistence().catch(() => {});
+            db.enablePersistence().catch(() => {});
           } else if (err.code !== 'unimplemented') {
-            console.warn('Firestore offline persistence:', err.code);
+            console.warn('Firestore persistence:', err.code);
           }
         });
       } catch(e) {
@@ -127,6 +124,16 @@ window.tailwind = window.tailwind || {};
         // Modal
         modal: { show: false, type: '', entry: null, editing: false, editForm: {} },
 
+        // Consulta accordion
+        expandedConsultaId: null,
+
+        // Perfil edición
+        editingProfile: false,
+        profileForm: {},
+
+        // Examen update
+        examStatusForm: {},
+
         // JSON loader
         jsonLoader: { show: false, text: '', error: '' },
         form: {},
@@ -137,31 +144,22 @@ window.tailwind = window.tailwind || {};
         // Charts
         charts: {},
 
-        // Nav items
+        // Nav items — arquitectura simplificada v11
         navItems: [
-          { id: 'dashboard', label: 'Inicio', icon: '🏠', badge: null },
-          { id: 'timeline', label: 'Timeline', icon: '🕐', badge: null },
-          { id: 'examenes', label: 'Exámenes', icon: '🔬', badge: null },
-          { id: 'medicamentos', label: 'Medicamentos', icon: '💊', badge: null },
-          { id: 'consultas', label: 'Consultas', icon: '🏥', badge: null },
-          { id: 'ordenesExamenes', label: 'Órdenes / exámenes', icon: '🧾', badge: null },
-          { id: 'vacunas', label: 'Vacunas', icon: '💉', badge: null },
-          { id: 'calendario', label: 'Calendario', icon: '📅', badge: null },
-          { id: 'recetas', label: 'Recetas', icon: '🧾', badge: null },
-          { id: 'alergias', label: 'Alergias', icon: '⚠️', badge: null },
-          { id: 'cirugias', label: 'Cirugías', icon: '🏨', badge: null },
-          { id: 'mediciones', label: 'Mediciones', icon: '📏', badge: null },
-          { id: 'documentos', label: 'Documentos', icon: '📎', badge: null },
-          { id: 'estadisticas', label: 'Estadísticas', icon: '📊', badge: null },
+          { id: 'dashboard',    label: 'Inicio',        icon: '🏠', badge: null },
+          { id: 'consultas',    label: 'Consultas',     icon: '🏥', badge: null },
+          { id: 'examenes',     label: 'Exámenes',      icon: '🔬', badge: null },
+          { id: 'medicamentos', label: 'Medicamentos',  icon: '💊', badge: null },
+          { id: 'vacunas',      label: 'Vacunas',       icon: '💉', badge: null },
+          { id: 'mediciones',   label: 'Mediciones',    icon: '📏', badge: null },
+          { id: 'perfil',       label: 'Perfil',        icon: '👤', badge: null },
         ],
         mobileNavItems: [
-          { id: 'dashboard', label: 'Inicio', icon: '🏠' },
-          { id: 'examenes', label: 'Exámenes', icon: '🔬' },
-          { id: 'medicamentos', label: 'Meds', icon: '💊' },
-          { id: 'calendario', label: 'Agenda', icon: '📅' },
-          { id: 'consultas', label: 'Consultas', icon: '🏥' },
-          { id: 'ordenesExamenes', label: 'Órdenes', icon: '🧾' },
-          { id: 'estadisticas', label: 'Stats', icon: '📊' },
+          { id: 'dashboard',    label: 'Inicio',       icon: '🏠' },
+          { id: 'consultas',    label: 'Consultas',    icon: '🏥' },
+          { id: 'examenes',     label: 'Exámenes',     icon: '🔬' },
+          { id: 'medicamentos', label: 'Meds',         icon: '💊' },
+          { id: 'perfil',       label: 'Perfil',       icon: '👤' },
         ],
 
         // ---- INIT ----
@@ -171,7 +169,7 @@ window.tailwind = window.tailwind || {};
           this.$watch('darkMode', v => localStorage.setItem('darkMode', v));
           this.$watch('activeSection', section => {
             this.$nextTick(() => {
-              if (section === 'mediciones' || section === 'estadisticas') this.renderCharts();
+              if (section === 'mediciones') this.renderCharts();
             });
           });
 
@@ -1087,13 +1085,13 @@ window.tailwind = window.tailwind || {};
             };
             let orderId;
             if (isFirebaseReady && this.currentUser) {
-              const ref = await this.profilePath().collection('ordenesExamenes').add({ ...order, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+              const ref = await this.profilePath().collection('examenes').add({ ...order, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
               orderId = ref.id;
             } else {
               orderId = Date.now().toString() + '_ord_' + Math.random().toString(16).slice(2);
               if (localDB) await localDB.entries.add({ ...order, id: orderId });
             }
-            this.examOrders.unshift({ ...order, id: orderId });
+            this.examenes.unshift({ ...order, id: orderId });
           }
         },
 
@@ -1136,9 +1134,107 @@ window.tailwind = window.tailwind || {};
         renderCharts() {
           this.$nextTick(() => {
             this.renderMeasurementCharts();
+            this.renderGrowthChart('weightGrowthChart', 'weight', 'Peso', 'kg', '#0ea5e9');
+            this.renderGrowthChart('heightGrowthChart', 'height', 'Talla', 'cm', '#8b5cf6');
             this.renderIMCChart();
-            this.renderExamTypeChart();
-            this.renderConsultasChart();
+          });
+        },
+
+        renderGrowthChart(canvasId, key, label, unit, color) {
+          const el = document.getElementById(canvasId);
+          if (!el) return;
+          this.destroyChart(canvasId);
+          const series = [...this.mediciones]
+            .filter(m => m[key] !== undefined && m[key] !== '' && m[key] !== null && !isNaN(Number(m[key])))
+            .sort((a, b) => {
+              const da = a.date?.toDate ? a.date.toDate() : new Date(a.date);
+              const db2 = b.date?.toDate ? b.date.toDate() : new Date(b.date);
+              return da - db2;
+            });
+          if (series.length < 1) return;
+
+          const labels = series.map(m => this.formatDate(m.date?.toDate ? m.date.toDate() : new Date(m.date)));
+          const values = series.map(m => Number(m[key]));
+
+          // Deltas for tooltip
+          const deltas = values.map((v, i) => {
+            if (i === 0) return null;
+            const prev = values[i - 1];
+            const diff = v - prev;
+            const pct = ((diff / prev) * 100).toFixed(1);
+            return { diff: diff.toFixed(1), pct, prev };
+          });
+
+          this.charts[canvasId] = new Chart(el, {
+            type: 'line',
+            data: {
+              labels,
+              datasets: [{
+                label,
+                data: values,
+                borderColor: color,
+                backgroundColor: color + '18',
+                tension: 0.35,
+                fill: true,
+                pointBackgroundColor: color,
+                pointRadius: 6,
+                pointHoverRadius: 8,
+                datalabels: { display: false }
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    title: (items) => labels[items[0].dataIndex],
+                    label: (item) => {
+                      const i = item.dataIndex;
+                      const v = values[i];
+                      const d = deltas[i];
+                      const lines = [`${label}: ${v} ${unit}`];
+                      if (d) {
+                        const sign = Number(d.diff) >= 0 ? '+' : '';
+                        lines.push(`Variación: ${sign}${d.diff} ${unit} (${sign}${d.pct}%)`);
+                        lines.push(`Control anterior: ${d.prev} ${unit}`);
+                      } else {
+                        lines.push('Primer registro');
+                      }
+                      return lines;
+                    }
+                  }
+                }
+              },
+              scales: {
+                y: {
+                  beginAtZero: false,
+                  ticks: {
+                    callback: v => v + ' ' + unit
+                  }
+                },
+                x: { ticks: { maxRotation: 30, autoSkip: true } }
+              }
+            },
+            plugins: [{
+              id: 'dataLabels',
+              afterDatasetsDraw(chart) {
+                const { ctx, data } = chart;
+                chart.data.datasets.forEach((dataset, i) => {
+                  const meta = chart.getDatasetMeta(i);
+                  meta.data.forEach((point, index) => {
+                    const val = dataset.data[index];
+                    ctx.save();
+                    ctx.font = 'bold 11px DM Sans, sans-serif';
+                    ctx.fillStyle = color;
+                    ctx.textAlign = 'center';
+                    ctx.fillText(val + ' ' + unit, point.x, point.y - 12);
+                    ctx.restore();
+                  });
+                });
+              }
+            }]
           });
         },
 
@@ -1478,6 +1574,89 @@ window.tailwind = window.tailwind || {};
           } catch(e) {
             this.showToast('Error al guardar: ' + e.message, 'error');
           }
+        },
+
+        // ---- PERFIL EDICIÓN ----
+        openEditProfile() {
+          this.profileForm = {
+            name:      this.currentProfile?.name      || '',
+            birthdate: this.currentProfile?.birthdate || '',
+            sex:       this.currentProfile?.sex       || 'M',
+            relation:  this.currentProfile?.relation  || 'Yo',
+            emoji:     this.currentProfile?.emoji     || '👤',
+            color:     this.currentProfile?.color     || '#0ea5e9',
+            alergias:  this.currentProfile?.alergias  || '',
+            cirugias:  this.currentProfile?.cirugiasList || '',
+          };
+          this.editingProfile = true;
+        },
+
+        async saveProfile() {
+          if (!this.profileForm.name) { this.showToast('El nombre es obligatorio', 'error'); return; }
+          const patch = {
+            name:          this.profileForm.name,
+            birthdate:     this.profileForm.birthdate,
+            sex:           this.profileForm.sex,
+            relation:      this.profileForm.relation,
+            emoji:         this.profileForm.emoji,
+            color:         this.profileForm.color,
+            alergias:      this.profileForm.alergias,
+            cirugiasList:  this.profileForm.cirugias,
+          };
+          try {
+            if (isFirebaseReady && this.currentUser) {
+              await db.collection('users').doc(this.currentUser.uid)
+                .collection('profiles').doc(this.currentProfile.id)
+                .set(patch, { merge: true });
+            } else if (localDB) {
+              await localDB.profiles.update(this.currentProfile.id, patch);
+            }
+            this.currentProfile = { ...this.currentProfile, ...patch };
+            this.profiles = this.profiles.map(p => p.id === this.currentProfile.id ? this.currentProfile : p);
+            this.editingProfile = false;
+            this.showToast('Perfil actualizado ✓');
+          } catch(e) {
+            this.showToast('Error al guardar: ' + e.message, 'error');
+          }
+        },
+
+        // ---- EXAMEN STATUS UPDATE ----
+        async updateExamStatus(exam, newStatus) {
+          const patch = { status: newStatus };
+          if (newStatus === 'Agendado' && this.examStatusForm.scheduledDate) {
+            patch.scheduledDate = this.examStatusForm.scheduledDate;
+          }
+          if (newStatus === 'Completado' && this.examStatusForm.result) {
+            patch.result = this.examStatusForm.result;
+            patch.resultDate = this.examStatusForm.resultDate || new Date().toISOString().split('T')[0];
+          }
+          try {
+            if (isFirebaseReady && this.currentUser) {
+              await this.profilePath().collection('examenes').doc(exam.id).set(patch, { merge: true });
+            } else if (localDB) {
+              await localDB.entries.update(exam.id, patch);
+            }
+            this.examenes = this.examenes.map(e => e.id === exam.id ? { ...e, ...patch } : e);
+            this.examStatusForm = {};
+            this.modal.show = false;
+            this.showToast('Examen actualizado ✓');
+          } catch(e) {
+            this.showToast('Error: ' + e.message, 'error');
+          }
+        },
+
+        examStatusColor(status) {
+          if (status === 'Pendiente')  return 'bg-amber-100 text-amber-700';
+          if (status === 'Agendado')   return 'bg-sky-100 text-sky-700';
+          if (status === 'Completado') return 'bg-green-100 text-green-700';
+          return 'bg-slate-100 text-slate-600';
+        },
+
+        examStatusIcon(status) {
+          if (status === 'Pendiente')  return '⏳';
+          if (status === 'Agendado')   return '📅';
+          if (status === 'Completado') return '✅';
+          return '🔬';
         },
 
         // ---- CARGADOR JSON ----
