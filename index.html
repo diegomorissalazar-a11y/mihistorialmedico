@@ -726,66 +726,88 @@
                 <!-- Cuerpo expandido (acordeón) -->
                 <div x-show="expandedConsultaId === c.id" x-transition class="mt-4 space-y-3 border-t border-slate-100 dark:border-slate-700 pt-4">
 
+                  <!-- Doctor + fecha (siempre visible) -->
+                  <div class="flex items-center gap-3 text-sm pb-2 border-b border-slate-100 dark:border-slate-700">
+                    <div class="flex-1">
+                      <span class="font-medium" x-text="c.doctor || c.specialty ? ((c.doctor || '') + (c.specialty ? ' · ' + c.specialty : '')) : 'Sin médico registrado'"></span>
+                      <span x-show="c.hospital" class="text-slate-400" x-text="' · ' + c.hospital"></span>
+                    </div>
+                    <span class="text-xs text-slate-400 flex-shrink-0" x-text="formatDate(c.date?.toDate ? c.date.toDate() : new Date(c.date))"></span>
+                  </div>
+
                   <!-- Diagnóstico -->
                   <div x-show="c.diagnosis" class="flex gap-2 text-sm">
                     <span class="text-emerald-600 flex-shrink-0">🩺</span>
                     <div>
-                      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Diagnóstico</div>
+                      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-0.5">Diagnóstico</div>
                       <div x-text="c.diagnosis"></div>
                     </div>
                   </div>
 
-                  <!-- Examen físico / Mediciones -->
-                  <div x-show="c.weight || c.height || c.headCircumference || c.temperature || c.glucose || (c.physicalItems && c.physicalItems.length)" class="flex gap-2 text-sm">
+                  <!-- Examen físico — lee physicalItems Y campos planos -->
+                  <div class="flex gap-2 text-sm"
+                       x-show="c.weight || c.height || c.headCircumference || c.temperature || c.glucose || c.bpSys || c.cholesterol || (c.physicalItems && c.physicalItems.length)">
                     <span class="flex-shrink-0">📏</span>
                     <div class="flex-1">
                       <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Examen físico</div>
-                      <div class="flex flex-wrap gap-2">
-                        <span x-show="c.weight" class="chip border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" x-text="c.weight + ' kg'"></span>
-                        <span x-show="c.height" class="chip border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" x-text="c.height + ' cm'"></span>
+                      <div class="flex flex-wrap gap-1.5">
+                        <!-- Campos planos (guardados por materializeConsultaItems) -->
+                        <span x-show="c.weight" class="chip border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" x-text="'Peso: ' + c.weight + ' kg'"></span>
+                        <span x-show="c.height" class="chip border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" x-text="'Talla: ' + c.height + ' cm'"></span>
                         <span x-show="c.headCircumference" class="chip border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" x-text="'CC: ' + c.headCircumference + ' cm'"></span>
-                        <span x-show="c.temperature" class="chip border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" x-text="c.temperature + '°C'"></span>
+                        <span x-show="c.temperature" class="chip border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" x-text="'Temp: ' + c.temperature + '°C'"></span>
                         <span x-show="c.glucose" class="chip border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" x-text="'Glucosa: ' + c.glucose + ' mg/dL'"></span>
-                        <template x-if="c.physicalItems && c.physicalItems.length && !c.weight && !c.height">
-                          <template x-for="(pi, idx) in c.physicalItems" :key="idx">
-                            <span x-show="pi.value" class="chip border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" x-text="pi.type + ': ' + pi.value + ' ' + (pi.unit || '')"></span>
-                          </template>
+                        <span x-show="c.bpSys" class="chip border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" x-text="'PA: ' + c.bpSys + (c.bpDia ? '/' + c.bpDia : '') + ' mmHg'"></span>
+                        <span x-show="c.cholesterol" class="chip border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" x-text="'Colesterol: ' + c.cholesterol + ' mg/dL'"></span>
+                        <!-- physicalItems array (carga por ítems) — siempre mostrar -->
+                        <template x-for="(pi, idx) in (c.physicalItems || [])" :key="idx">
+                          <span x-show="pi.value" class="chip border-teal-200 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" x-text="pi.type + ': ' + pi.value + ' ' + (pi.unit || '')"></span>
                         </template>
                       </div>
                     </div>
                   </div>
 
                   <!-- Medicamentos recetados -->
-                  <div x-show="(c.medicationItems && c.medicationItems.length) || c.medicationsText" class="flex gap-2 text-sm">
+                  <div class="flex gap-2 text-sm"
+                       x-show="(c.medicationItems && c.medicationItems.length) || c.medicationsText">
                     <span class="flex-shrink-0">💊</span>
                     <div class="flex-1">
-                      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Medicamentos recetados</div>
-                      <template x-if="c.medicationItems && c.medicationItems.length">
-                        <div class="space-y-1">
-                          <template x-for="(m, i) in c.medicationItems" :key="i">
-                            <div class="text-xs bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-1.5 text-amber-800 dark:text-amber-300"
-                                 x-text="m.name + (m.dose ? ' — ' + m.dose : '') + (m.frequency ? ' — ' + m.frequency : '') + (m.durationDays ? ' — ' + m.durationDays + ' días' : '')"></div>
-                          </template>
-                        </div>
-                      </template>
-                      <div x-show="!c.medicationItems?.length && c.medicationsText" class="text-xs bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-1.5 text-amber-800 dark:text-amber-300" x-text="c.medicationsText"></div>
+                      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Medicamentos</div>
+                      <div class="space-y-1">
+                        <template x-for="(m, i) in (c.medicationItems || [])" :key="i">
+                          <div x-show="m.name" class="text-xs bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-1.5 text-amber-800 dark:text-amber-300">
+                            <span class="font-medium" x-text="m.name"></span>
+                            <span x-show="m.dose" x-text="' · ' + m.dose"></span>
+                            <span x-show="m.frequency" x-text="' · ' + m.frequency"></span>
+                            <span x-show="m.durationDays" x-text="' · ' + m.durationDays + ' días'"></span>
+                            <span x-show="m.route" class="text-amber-600" x-text="' · ' + m.route"></span>
+                          </div>
+                        </template>
+                        <div x-show="!c.medicationItems?.length && c.medicationsText"
+                             class="text-xs bg-amber-50 dark:bg-amber-900/20 rounded-lg px-3 py-1.5 text-amber-800 dark:text-amber-300 whitespace-pre-line"
+                             x-text="c.medicationsText"></div>
+                      </div>
                     </div>
                   </div>
 
                   <!-- Órdenes de exámenes -->
-                  <div x-show="(c.examOrderItems && c.examOrderItems.length) || c.examOrdersText" class="flex gap-2 text-sm">
+                  <div class="flex gap-2 text-sm"
+                       x-show="(c.examOrderItems && c.examOrderItems.length) || c.examOrdersText">
                     <span class="flex-shrink-0">🔬</span>
                     <div class="flex-1">
                       <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Órdenes de examen</div>
-                      <template x-if="c.examOrderItems && c.examOrderItems.length">
-                        <div class="space-y-1">
-                          <template x-for="(o, i) in c.examOrderItems" :key="i">
-                            <div class="text-xs bg-purple-50 dark:bg-purple-900/20 rounded-lg px-3 py-1.5 text-purple-800 dark:text-purple-300"
-                                 x-text="o.name + (o.type ? ' — ' + o.type : '') + (o.notes ? ' — ' + o.notes : '')"></div>
-                          </template>
-                        </div>
-                      </template>
-                      <div x-show="!c.examOrderItems?.length && c.examOrdersText" class="text-xs bg-purple-50 dark:bg-purple-900/20 rounded-lg px-3 py-1.5 text-purple-800 dark:text-purple-300" x-text="c.examOrdersText"></div>
+                      <div class="space-y-1">
+                        <template x-for="(o, i) in (c.examOrderItems || [])" :key="i">
+                          <div x-show="o.name" class="text-xs bg-purple-50 dark:bg-purple-900/20 rounded-lg px-3 py-1.5 text-purple-800 dark:text-purple-300">
+                            <span class="font-medium" x-text="o.name"></span>
+                            <span x-show="o.type" x-text="' · ' + o.type"></span>
+                            <span x-show="o.notes" class="text-purple-600" x-text="' — ' + o.notes"></span>
+                          </div>
+                        </template>
+                        <div x-show="!c.examOrderItems?.length && c.examOrdersText"
+                             class="text-xs bg-purple-50 dark:bg-purple-900/20 rounded-lg px-3 py-1.5 text-purple-800 dark:text-purple-300 whitespace-pre-line"
+                             x-text="c.examOrdersText"></div>
+                      </div>
                     </div>
                   </div>
 
@@ -793,9 +815,9 @@
                   <div x-show="c.nextControlDate" class="flex gap-2 text-sm">
                     <span class="flex-shrink-0">📅</span>
                     <div class="flex-1">
-                      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Próximo control</div>
-                      <div class="flex items-center gap-2">
-                        <span class="text-sm" x-text="formatDate(c.nextControlDate?.toDate ? c.nextControlDate.toDate() : new Date(c.nextControlDate))"></span>
+                      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-0.5">Próximo control</div>
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span x-text="formatDate(c.nextControlDate?.toDate ? c.nextControlDate.toDate() : new Date(c.nextControlDate))"></span>
                         <span class="badge text-xs" :class="statusBadgeClass(daysUntil(c.nextControlDate))" x-text="statusForDays(daysUntil(c.nextControlDate)).label"></span>
                       </div>
                     </div>
@@ -805,17 +827,20 @@
                   <div x-show="c.generalInstructions" class="flex gap-2 text-sm">
                     <span class="flex-shrink-0">📋</span>
                     <div>
-                      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Indicaciones</div>
+                      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-0.5">Indicaciones</div>
                       <div class="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-line" x-text="c.generalInstructions"></div>
                     </div>
                   </div>
 
                   <!-- Notas -->
-                  <div x-show="c.notes" class="text-xs text-slate-400 italic" x-text="c.notes"></div>
+                  <div x-show="c.notes" class="flex gap-2 text-sm">
+                    <span class="flex-shrink-0">📝</span>
+                    <div class="text-xs text-slate-500 italic" x-text="c.notes"></div>
+                  </div>
 
                   <!-- Acciones -->
-                  <div class="flex gap-2 pt-2">
-                    <button class="btn-danger text-xs py-1.5" @click.stop="deleteEntry(c); expandedConsultaId = null">Eliminar</button>
+                  <div class="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                    <button class="btn-danger text-xs py-1.5" @click.stop="deleteEntry(c); expandedConsultaId = null">Eliminar consulta</button>
                   </div>
                 </div>
               </div>
