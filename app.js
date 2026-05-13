@@ -1133,10 +1133,13 @@ window.tailwind = window.tailwind || {};
         // ---- CHARTS ----
         renderCharts() {
           this.$nextTick(() => {
-            this.renderMeasurementCharts();
             this.renderGrowthChart('weightGrowthChart', 'weight', 'Peso', 'kg', '#0ea5e9');
             this.renderGrowthChart('heightGrowthChart', 'height', 'Talla', 'cm', '#8b5cf6');
-            this.renderIMCChart();
+            this.renderMetricChart('headCircumferenceChart', 'headCircumference', 'Circunferencia craneana (cm)', '#14b8a6');
+            this.renderMetricChart('glucoseChart', 'glucose', 'Glucosa (mg/dL)', '#f59e0b');
+            this.renderMetricChart('bpSysChart', 'bpSys', 'Presión sistólica', '#ef4444');
+            this.renderMetricChart('bpDiaChart', 'bpDia', 'Presión diastólica', '#ec4899');
+            this.renderMetricChart('cholesterolChart', 'cholesterol', 'Colesterol (mg/dL)', '#10b981');
           });
         },
 
