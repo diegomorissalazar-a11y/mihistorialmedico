@@ -740,6 +740,26 @@ window.tailwind = window.tailwind || {};
           }
         },
 
+        // ---- TERMINAR TRATAMIENTO ----
+        async finishTreatment(med) {
+          const patch = { active: false, finishedAt: new Date().toISOString().split('T')[0] };
+          try {
+            if (isFirebaseReady && this.currentUser) {
+              await this.profilePath().collection('medicamentos').doc(med.id).set(patch, { merge: true });
+            } else if (localDB) {
+              await localDB.entries.update(med.id, patch);
+            }
+            this.medicamentos = this.medicamentos.map(m =>
+              m.id === med.id ? { ...m, ...patch } : m
+            );
+            // Switch to historial tab so user sees where it went
+            this.medTab = 'historial';
+            this.showToast('Tratamiento concluido ✓ — movido a Historial');
+          } catch(e) {
+            this.showToast('Error: ' + e.message, 'error');
+          }
+        },
+
         // Legacy compat
         async toggleMedTakenById(medId, name, dose) { await this.toggleDose(medId, name, dose, 0, '08:00'); },
         toggleMedTaken(med) { this.toggleDose(med.id, med.name, med.dose, 0, '08:00'); },

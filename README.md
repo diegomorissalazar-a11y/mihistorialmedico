@@ -126,3 +126,8 @@ Tablas OMS 2006 (Minsal Chile) para 0–24 meses. Requiere sexo y fecha de nacim
 
 ### v1–v4 — 12/05/2026
 - Versión inicial PWA + Firebase + correlativo
+
+### v17 — 13/05/2026
+- Medicamentos vencidos: muestra botón "✓ Marcar como concluido" en lugar de los horarios de toma
+- Al concluir: `active: false`, pasa automáticamente a pestaña Historial
+- Medicamentos vigentes: comportamiento sin cambios (horarios + contador de tomas)
