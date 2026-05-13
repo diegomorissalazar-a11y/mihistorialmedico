@@ -1702,23 +1702,50 @@ window.tailwind = window.tailwind || {};
 
           const today = new Date().toISOString().split('T')[0];
 
-          // Mapeo de campos al formato del formulario
+          // ── Título por defecto: "Control - Especialidad" si no viene title ──
+          const specialty = data.specialty || '';
+          const title = data.title || (specialty ? 'Control - ' + specialty : 'Consulta');
+
+          // ── Normalizar medicationItems desde JSON ──
+          const medicationItems = (Array.isArray(data.medicationItems) ? data.medicationItems : []).map(m => ({
+            savedName:    m.name || m.savedName || '',
+            name:         m.name || m.savedName || '',
+            dose:         m.dose         || '',
+            frequency:    m.frequency    || 'Diaria',
+            durationDays: m.durationDays ? String(m.durationDays) : '',
+            durationText: m.durationText || (m.durationDays ? m.durationDays + ' días' : ''),
+            route:        m.route        || '',
+            notes:        m.notes        || '',
+          }));
+
+          // ── Normalizar examOrderItems desde JSON ──
+          const examOrderItems = (Array.isArray(data.examOrderItems) ? data.examOrderItems : []).map(o => ({
+            name:        o.name        || o.savedName || '',
+            type:        o.type        || o.subtype   || 'Otro',
+            notes:       o.notes       || '',
+            indication:  o.indication  || '',
+          }));
+
+          // ── Hospital: acepta hospital, center o centre ──
+          const hospital = data.hospital || data.center || data.centre || '';
+
           this.form = {
-            date:               data.date              || today,
-            title:              data.title             || '',
-            controlType:        data.visitType         || data.controlType || 'Consulta general',
-            doctor:             data.doctor            || '',
-            specialty:          data.specialty         || '',
-            hospital:           data.hospital          || data.center || '',
-            diagnosis:          data.diagnosis         || '',
+            date:                data.date        || today,
+            title,
+            controlType:         data.visitType   || data.controlType || 'Consulta general',
+            // Doctor: cargar en campo libre (savedDoctor = __otro__ para forzar input visible)
+            savedDoctor:         '__otro__',
+            doctor:              data.doctor      || '',
+            specialty,
+            // Hospital: cargar en campo libre (savedCenter = __otro__ para forzar input visible)
+            savedCenter:         hospital ? '__otro__' : '',
+            hospital,
+            diagnosis:           data.diagnosis   || '',
             generalInstructions: data.generalInstructions || data.notes || '',
-            nextControlDate:    data.nextControlDate   || '',
-
-            // Ítems estructurados
-            physicalItems:    Array.isArray(data.physicalItems)    ? data.physicalItems    : [],
-            medicationItems:  Array.isArray(data.medicationItems)  ? data.medicationItems  : [],
-            examOrderItems:   Array.isArray(data.examOrderItems)   ? data.examOrderItems   : [],
-
+            nextControlDate:     data.nextControlDate || '',
+            physicalItems:       Array.isArray(data.physicalItems) ? data.physicalItems : [],
+            medicationItems,
+            examOrderItems,
             active: true,
           };
 

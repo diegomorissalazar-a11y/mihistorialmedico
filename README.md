@@ -124,3 +124,9 @@ Tablas OMS 2006 (Minsal Chile) para 0–24 meses. Requiere sexo y fecha de nacim
 
 ### v1–v4 — 12/05/2026
 - Versión inicial PWA + Firebase + correlativo de versión
+
+### v15 — 13/05/2026
+- Fix carga JSON: medicationItems y examOrderItems se renderizan correctamente en el formulario
+- Fix hospital/center: acepta `hospital`, `center` o `centre`, fuerza input libre visible
+- Título automático: si no viene `title`, genera "Control - {especialidad}"
+- Normalización de items: acepta `name` o `savedName`, convierte durationDays a string
