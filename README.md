@@ -1,132 +1,128 @@
-# MiHistorialMédico
+# MiHistorialMédico v16
 
-App web progresiva (PWA) para llevar el historial médico completo de por vida. Diseñada para uso personal familiar — actualmente para dos perfiles: Diego y Santiago.
+App web progresiva (PWA) para historial médico familiar. Perfiles: Diego y Santiago.
 
-## Stack técnico
-- **Frontend:** HTML + Tailwind CSS (CDN) + Alpine.js v3
-- **Base de datos:** Firebase Firestore (sync en tiempo real + offline)
-- **Auth:** Firebase Authentication (email/contraseña)
-- **Gráficos:** Chart.js
-- **Offline:** IndexedDB (Dexie.js) como fallback
-- **PWA:** Service Worker (`sw.js`) + manifest
+## Stack
+Tailwind CSS CDN · Alpine.js v3 · Firebase v9 compat (Firestore + Auth) · Chart.js · Dexie.js · Service Worker
 
-## Configuración Firebase
-El proyecto usa Firebase `lumen-6ed85`. Las credenciales están en `app.js` bajo `FIREBASE_CONFIG`.
+## Firebase
+Proyecto `lumen-6ed85` — credenciales en `app.js` bajo `FIREBASE_CONFIG`.
 
-### Estructura Firestore
-```
-users/{uid}/profiles/{profileId}/
-  consultas/       ← consultas y controles
-  examenes/        ← exámenes (Pendiente → Agendado → Completado)
-  medicamentos/    ← medicamentos activos e historial
-  vacunas/
-  mediciones/      ← peso, talla, CC, glucosa, presión, colesterol
-  medTaken/        ← registro diario de tomas
-  recordatorios/
-```
+## Secciones (7)
+| | Sección | Descripción |
+|---|---|---|
+| 🏠 | Inicio | Dashboard: meds del día, exámenes agendados con alerta, recordatorios |
+| 🏥 | Consultas | Fase 1: crear cabecera. Fase 2: enriquecer con ＋ Agregar |
+| 🔬 | Exámenes | Acordeón con detalle completo, seguimiento de estado y fecha de cita |
+| 💊 | Medicamentos | Tomas diarias con horarios calculados |
+| 💉 | Vacunas | Historial con próxima dosis |
+| 📊 | Estadísticas | Gráficos de crecimiento con variación % + percentiles OMS |
+| 👤 | Perfil | Nombre, sexo, fecha nacimiento, alergias, antecedentes quirúrgicos |
 
-### Reglas Firestore
-```
-match /users/{userId}/{document=**} {
-  allow read, write: if request.auth != null && request.auth.uid == userId;
-}
-```
+## Flujo de consulta (2 fases)
+**Fase 1 — Crear cabecera:**
+Botón "+ Agregar" → formulario simple (fecha, médico, especialidad, centro, diagnóstico, indicaciones, próximo control) → Guardar
 
-## Secciones
-| Sección | Descripción |
-|---|---|
-| 🏠 Inicio | Dashboard con stats, medicamentos del día, recordatorios |
-| 🏥 Consultas | Acordeón expandible. Al guardar crea automáticamente medicamentos y exámenes vinculados |
-| 🔬 Exámenes | Estados: Pendiente → Agendado → Completado |
-| 💊 Medicamentos | Tomas diarias con horarios calculados por frecuencia |
-| 💉 Vacunas | Historial con próxima dosis |
-| 📏 Mediciones | Gráficos de crecimiento con variación % + percentiles OMS |
-| 👤 Perfil | Nombre, sexo, fecha nacimiento, alergias, antecedentes quirúrgicos |
+**Fase 2 — Enriquecer:**
+Click en el control guardado → expandir acordeón → botón "＋ Agregar" → menú con 3 opciones:
+- 📏 **Examen físico** → alimenta Estadísticas automáticamente
+- 💊 **Medicamentos** → alimenta sección Medicamentos con tomas y horarios
+- 🔬 **Órdenes médicas** → alimenta sección Exámenes con seguimiento de agendamiento
 
-## Carga de consultas desde JSON
-En "Agregar consulta" → botón **📋 Cargar desde JSON**:
+Cada opción acepta entrada manual, JSON o combinación.
+
+## Exámenes — estados
+Pendiente → Agendado (con fecha de cita) → Completado (con resultado)
+Los exámenes con fecha de cita aparecen en el Dashboard con alerta de días restantes.
+
+## JSON de carga — formatos
+
+### Consulta (cabecera)
 ```json
 {
   "type": "consulta",
   "date": "2026-05-02",
-  "title": "Consulta Urología",
-  "doctor": "Guillermo Andrés Soto Cornejo",
+  "doctor": "Dr. Guillermo Andrés Soto Cornejo",
   "specialty": "Urología Adulto",
   "hospital": "RedSalud Pedro de Valdivia",
-  "diagnosis": "Otros trastornos especificados de los órganos genitales masculinos",
-  "generalInstructions": "",
+  "diagnosis": "Diagnóstico...",
+  "generalInstructions": "Indicaciones...",
   "physicalItems": [],
   "medicationItems": [
-    { "name": "Pregabalina 75mg cápsula dura", "dose": "1 cápsula", "frequency": "Cada 24 horas", "durationDays": 15, "route": "Oral" },
-    { "name": "Ketorolaco Trometamol 30mg", "dose": "1 comprimido", "frequency": "Cada 8 horas", "durationDays": 5, "route": "Sublingual" }
+    { "name": "Pregabalina 75mg", "dose": "1 cápsula", "frequency": "Cada 24 horas", "durationDays": 15, "route": "Oral" }
   ],
   "examOrderItems": [
-    { "name": "Ecotomografía Doppler Testicular", "type": "Imagenología", "notes": "Dolor testicular derecho" }
+    { "name": "Eco Doppler Testicular", "type": "Imagenología", "notes": "Dolor testicular derecho", "scheduledDate": "2026-05-20" }
   ]
 }
 ```
-Al guardar, los medicamentos se crean automáticamente en la sección Medicamentos y los exámenes en la sección Exámenes con estado "Pendiente".
+
+### Examen físico (para enriquecer)
+```json
+{ "weight": 11.2, "height": 83, "headCircumference": 47.8, "temperature": 37.0, "saturation": 98 }
+```
+
+### Medicamentos (para enriquecer)
+```json
+[
+  { "name": "Amoxicilina 500mg", "dose": "1 cápsula", "frequency": "Cada 8 horas", "durationDays": 7, "route": "Oral" }
+]
+```
+
+### Órdenes médicas (para enriquecer)
+```json
+[
+  { "name": "Hemograma", "type": "Laboratorio", "notes": "En ayunas", "scheduledDate": "2026-05-25" }
+]
+```
 
 ## Percentiles OMS
-Tablas OMS 2006 (Minsal Chile) para 0–24 meses. Requiere sexo y fecha de nacimiento en el perfil.
-
-## Horarios de medicamentos
-| Frecuencia | Horarios |
-|---|---|
-| Cada 6 horas | 06:00 · 10:00 · 14:00 · 18:00 |
-| Cada 8 horas | 06:00 · 12:00 · 18:00 |
-| Cada 12 horas | 06:00 · 18:00 |
-| Diaria | 08:00 |
-
----
+Tablas OMS 2006 (Minsal Chile) para 0–24 meses. Requiere sexo y fecha de nacimiento en Perfil.
 
 ## Historial de versiones
 
+### v16 — 13/05/2026
+- Flujo consulta en 2 fases: crear cabecera → enriquecer con ＋ Agregar
+- Menú de enriquecimiento: Examen físico · Medicamentos · Órdenes médicas
+- Cada opción acepta JSON, formulario manual o combinación
+- Exámenes: acordeón con detalle completo (origen, indicación, cita, resultado)
+- Exámenes agendados con alerta en Dashboard (días restantes)
+- Sección renombrada Mediciones → Estadísticas
+- Filtro por estado en sección Exámenes
+- Sin adjuntar documentos en formularios
+
+### v15 — 13/05/2026
+- Fix carga JSON: hospital, título automático, normalización de items
+
 ### v14 — 12/05/2026
-- Fix medicamentos y exámenes no se creaban al guardar consulta cargada desde JSON
-- Fix arrays (medicationItems, examOrderItems) se perdían en el filtro de campos vacíos
-- Normalización de campos: acepta `name` o `savedName`, incluye hospital y título de consulta de origen en medicamentos y exámenes vinculados
+- Fix medicamentos y exámenes no se creaban desde JSON
 
 ### v13 — 12/05/2026
-- Fix acordeón consultas: muestra doctor, fecha, todos los campos expandidos correctamente
-- README incluido en el zip
+- Fix acordeón consultas detalle completo · README incluido
 
 ### v12 — 12/05/2026
-- Fix gráficos de crecimiento no aparecían
-- Fix consultas physicalItems
+- Fix gráficos de crecimiento · Fix physicalItems
 
 ### v11 — 12/05/2026
-- Reestructura a 7 secciones (Inicio, Consultas, Exámenes, Medicamentos, Vacunas, Mediciones, Perfil)
-- Consultas expandibles tipo acordeón
-- Exámenes con flujo de estados
-- Mediciones fusionada con Estadísticas
-- Sección Perfil nueva
+- Reestructura a 7 secciones · Consultas acordeón · Perfil nuevo
 
 ### v10 — 12/05/2026
 - Fix Firebase persistence API
 
 ### v9 — 12/05/2026
-- Dosis múltiples con horarios calculados
-- Percentiles OMS para peso y talla
-- Campo sexo biológico en perfil
+- Dosis múltiples con horarios · Percentiles OMS · Sexo en perfil
 
 ### v8 — 12/05/2026
-- Fix Service Worker para GitHub Pages (sw.js separado)
+- Fix Service Worker GitHub Pages (sw.js separado)
 
 ### v7 — 12/05/2026
-- Edición de medicamentos desde el detalle
+- Edición medicamentos desde detalle
 
 ### v6 — 12/05/2026
-- Fix funciones linked desde consulta faltantes
+- Fix funciones linked faltantes
 
 ### v5 — 12/05/2026
-- Cargador JSON en modal de consulta
+- Cargador JSON en consulta
 
 ### v1–v4 — 12/05/2026
-- Versión inicial PWA + Firebase + correlativo de versión
-
-### v15 — 13/05/2026
-- Fix carga JSON: medicationItems y examOrderItems se renderizan correctamente en el formulario
-- Fix hospital/center: acepta `hospital`, `center` o `centre`, fuerza input libre visible
-- Título automático: si no viene `title`, genera "Control - {especialidad}"
-- Normalización de items: acepta `name` o `savedName`, convierte durationDays a string
+- Versión inicial PWA + Firebase + correlativo

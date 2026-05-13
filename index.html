@@ -268,6 +268,29 @@
             </div>
           </div>
 
+          <!-- Exámenes agendados -->
+          <div class="card" x-show="examenesConFecha().length > 0">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold">🔬 Exámenes agendados</h3>
+              <button class="text-xs text-sky-500" @click="activeSection='examenes'">Ver todos</button>
+            </div>
+            <div class="space-y-2">
+              <template x-for="e in examenesConFecha().slice(0,4)" :key="e.id">
+                <div class="flex items-center gap-3 p-3 rounded-xl"
+                     :class="daysUntilExam(e) !== null && daysUntilExam(e) <= 3 ? 'bg-red-50 dark:bg-red-900/20' : daysUntilExam(e) <= 7 ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-sky-50 dark:bg-sky-900/20'">
+                  <div class="text-lg">🔬</div>
+                  <div class="flex-1 min-w-0">
+                    <div class="text-sm font-medium truncate" x-text="e.title || e.name"></div>
+                    <div class="text-xs text-slate-500" x-text="'Cita: ' + formatDate(e.scheduledDate?.toDate ? e.scheduledDate.toDate() : new Date(e.scheduledDate))"></div>
+                  </div>
+                  <span class="badge flex-shrink-0"
+                        :class="daysUntilExam(e) < 0 ? 'bg-red-100 text-red-700' : daysUntilExam(e) <= 3 ? 'bg-red-100 text-red-700' : daysUntilExam(e) <= 7 ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'"
+                        x-text="daysUntilExam(e) === 0 ? 'Hoy' : daysUntilExam(e) < 0 ? 'Vencido' : 'En ' + daysUntilExam(e) + 'd'"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- Recordatorios -->
           <div class="card" x-show="upcomingReminders.length > 0">
             <h3 class="font-semibold mb-3">🗓️ Próximos recordatorios</h3>
@@ -405,7 +428,7 @@
         </div>
 
         <!-- ===== EXÁMENES ===== -->
-        <!-- ===== EXÁMENES ===== -->
+        <!-- ===== EXÁMENES (acordeón igual que consultas) ===== -->
         <div x-show="activeSection === 'examenes'" class="animate-fade-in space-y-4">
           <div class="flex items-center justify-between">
             <h2 class="text-lg font-bold">🔬 Exámenes</h2>
@@ -414,43 +437,125 @@
 
           <!-- Status summary -->
           <div class="grid grid-cols-3 gap-3">
-            <div class="card text-center">
-              <div class="text-2xl font-bold text-amber-600" x-text="examenes.filter(e=>e.status==='Pendiente').length"></div>
+            <div class="card text-center cursor-pointer hover:border-amber-300 transition" @click="examFilter='Pendiente'">
+              <div class="text-2xl font-bold text-amber-600" x-text="examenes.filter(e=>e.status==='Pendiente'||!e.status).length"></div>
               <div class="text-xs text-slate-500 mt-0.5">⏳ Pendiente</div>
             </div>
-            <div class="card text-center">
+            <div class="card text-center cursor-pointer hover:border-sky-300 transition" @click="examFilter='Agendado'">
               <div class="text-2xl font-bold text-sky-600" x-text="examenes.filter(e=>e.status==='Agendado').length"></div>
               <div class="text-xs text-slate-500 mt-0.5">📅 Agendado</div>
             </div>
-            <div class="card text-center">
+            <div class="card text-center cursor-pointer hover:border-green-300 transition" @click="examFilter='Completado'">
               <div class="text-2xl font-bold text-green-600" x-text="examenes.filter(e=>e.status==='Completado').length"></div>
               <div class="text-xs text-slate-500 mt-0.5">✅ Completado</div>
             </div>
           </div>
 
-          <!-- Exam list -->
-          <div class="space-y-3">
-            <template x-for="e in examenes" :key="e.id">
-              <div class="card card-hover" @click="openModal('examStatus'); modal.entry = e; examStatusForm = { scheduledDate: e.scheduledDate || '', result: e.result || '', resultDate: e.resultDate || '' }">
-                <div class="flex items-start gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-sky-100 dark:bg-sky-900/50 flex items-center justify-center text-xl flex-shrink-0" x-text="examStatusIcon(e.status || 'Pendiente')"></div>
+          <!-- Filter chip -->
+          <div x-show="examFilter" class="flex items-center gap-2">
+            <span class="text-xs text-slate-500">Filtrando por:</span>
+            <span class="badge bg-sky-100 text-sky-700" x-text="examFilter"></span>
+            <button class="text-xs text-slate-400 hover:text-slate-600" @click="examFilter=''">✕ Limpiar</button>
+          </div>
+
+          <!-- Exam accordion list -->
+          <div class="space-y-2">
+            <template x-for="e in (examFilter ? examenes.filter(x=>(x.status||'Pendiente')===examFilter) : examenes)" :key="e.id">
+              <div class="card overflow-hidden">
+                <!-- Header -->
+                <div class="flex items-start gap-3 cursor-pointer"
+                     @click="expandedExamenId = expandedExamenId === e.id ? null : e.id">
+                  <div class="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+                       :class="(e.status||'Pendiente')==='Completado' ? 'bg-green-100 dark:bg-green-900/30' : (e.status)==='Agendado' ? 'bg-sky-100 dark:bg-sky-900/30' : 'bg-amber-100 dark:bg-amber-900/30'"
+                       x-text="examStatusIcon(e.status || 'Pendiente')"></div>
                   <div class="flex-1 min-w-0">
                     <div class="flex items-start justify-between gap-2">
-                      <div class="flex-1 min-w-0">
-                        <div class="font-semibold text-sm" x-text="e.title || e.name"></div>
-                        <div class="text-xs text-slate-500 mt-0.5" x-text="(e.doctor ? e.doctor + ' · ' : '') + formatDate(e.date?.toDate ? e.date.toDate() : new Date(e.date))"></div>
+                      <div class="min-w-0">
+                        <div class="font-semibold text-sm truncate" x-text="e.title || e.name"></div>
+                        <div class="text-xs text-slate-500 mt-0.5" x-text="(e.subtype ? e.subtype + ' · ' : '') + formatDate(e.date?.toDate ? e.date.toDate() : new Date(e.date))"></div>
                       </div>
-                      <span class="badge flex-shrink-0" :class="examStatusColor(e.status || 'Pendiente')" x-text="e.status || 'Pendiente'"></span>
+                      <div class="flex items-center gap-1.5 flex-shrink-0">
+                        <span class="badge" :class="examStatusColor(e.status || 'Pendiente')" x-text="e.status || 'Pendiente'"></span>
+                        <span class="text-slate-400 text-sm" x-text="expandedExamenId === e.id ? '▲' : '▼'"></span>
+                      </div>
                     </div>
-                    <div x-show="e.scheduledDate" class="mt-1.5 text-xs text-sky-600 dark:text-sky-400" x-text="'📅 Cita: ' + formatDate(e.scheduledDate)"></div>
-                    <div x-show="e.result" class="mt-1.5 text-xs bg-green-50 dark:bg-green-900/20 rounded-lg px-3 py-1.5 text-green-800 dark:text-green-300" x-text="'Resultado: ' + e.result"></div>
-                    <div x-show="e.notes && !e.result" class="mt-1 text-xs text-slate-400 line-clamp-1" x-text="e.notes"></div>
+                    <!-- Preview -->
+                    <div class="flex flex-wrap gap-1.5 mt-1" x-show="expandedExamenId !== e.id">
+                      <span x-show="e.scheduledDate" class="text-[10px] bg-sky-100 text-sky-700 rounded-full px-2 py-0.5" x-text="'📅 ' + formatDate(e.scheduledDate?.toDate ? e.scheduledDate.toDate() : new Date(e.scheduledDate))"></span>
+                      <span x-show="e.doctor" class="text-[10px] bg-slate-100 text-slate-600 rounded-full px-2 py-0.5" x-text="e.doctor"></span>
+                      <span x-show="e.result" class="text-[10px] bg-green-100 text-green-700 rounded-full px-2 py-0.5">✅ Con resultado</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Body expandido -->
+                <div x-show="expandedExamenId === e.id" x-transition class="mt-4 space-y-3 border-t border-slate-100 dark:border-slate-700 pt-4">
+
+                  <!-- Origen -->
+                  <div class="flex items-center gap-3 text-sm pb-2 border-b border-slate-100 dark:border-slate-700">
+                    <div class="flex-1">
+                      <span x-show="e.doctor" class="font-medium" x-text="e.doctor"></span>
+                      <span x-show="e.hospital" class="text-slate-400" x-text="' · ' + e.hospital"></span>
+                    </div>
+                    <span class="text-xs text-slate-400" x-text="formatDate(e.date?.toDate ? e.date.toDate() : new Date(e.date))"></span>
+                  </div>
+
+                  <!-- Consulta origen -->
+                  <div x-show="e.sourceConsultaTitle" class="flex gap-2 text-sm">
+                    <span class="flex-shrink-0">🏥</span>
+                    <div>
+                      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-0.5">Origen</div>
+                      <div class="text-xs text-slate-600 dark:text-slate-300" x-text="e.sourceConsultaTitle"></div>
+                    </div>
+                  </div>
+
+                  <!-- Tipo e indicación -->
+                  <div x-show="e.subtype || e.notes" class="flex gap-2 text-sm">
+                    <span class="flex-shrink-0">📋</span>
+                    <div>
+                      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-0.5">Indicación</div>
+                      <div x-show="e.subtype" class="chip border-sky-200 bg-sky-50 text-sky-700 mb-1 w-fit" x-text="e.subtype"></div>
+                      <div x-show="e.notes" class="text-xs text-slate-600 dark:text-slate-300" x-text="e.notes"></div>
+                    </div>
+                  </div>
+
+                  <!-- Fecha agendada + días restantes -->
+                  <div x-show="e.scheduledDate" class="flex gap-2 text-sm">
+                    <span class="flex-shrink-0">📅</span>
+                    <div class="flex-1">
+                      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-0.5">Cita agendada</div>
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <span x-text="formatDate(e.scheduledDate?.toDate ? e.scheduledDate.toDate() : new Date(e.scheduledDate))"></span>
+                        <span class="badge text-xs"
+                              :class="daysUntilExam(e) < 0 ? 'bg-red-100 text-red-700' : daysUntilExam(e) <= 3 ? 'bg-red-100 text-red-700' : daysUntilExam(e) <= 7 ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'"
+                              x-text="daysUntilExam(e) === 0 ? '¡Hoy!' : daysUntilExam(e) < 0 ? 'Pasado' : 'En ' + daysUntilExam(e) + ' días'"></span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Resultado -->
+                  <div x-show="e.result" class="flex gap-2 text-sm">
+                    <span class="flex-shrink-0">✅</span>
+                    <div>
+                      <div class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-0.5">Resultado</div>
+                      <div class="text-xs bg-green-50 dark:bg-green-900/20 rounded-lg px-3 py-2 text-green-800 dark:text-green-300 whitespace-pre-line" x-text="e.result"></div>
+                      <div x-show="e.resultDate" class="text-xs text-slate-400 mt-1" x-text="'Fecha resultado: ' + formatDate(e.resultDate?.toDate ? e.resultDate.toDate() : new Date(e.resultDate))"></div>
+                    </div>
+                  </div>
+
+                  <!-- Acciones -->
+                  <div class="flex flex-wrap gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                    <button class="btn-primary text-xs py-1.5"
+                            @click.stop="openModal('examStatus'); modal.entry = e; examStatusForm = { scheduledDate: e.scheduledDate || '', result: e.result || '', resultDate: e.resultDate || '' }">
+                      Actualizar estado
+                    </button>
+                    <button class="btn-danger text-xs py-1.5" @click.stop="deleteEntry(e); expandedExamenId = null">Eliminar</button>
                   </div>
                 </div>
               </div>
             </template>
             <div x-show="examenes.length === 0" class="card text-center py-10 text-slate-400">
-              Sin exámenes. Se crean automáticamente desde Consultas, o agrégalos manualmente.
+              Sin exámenes. Se crean desde Consultas al agregar órdenes médicas.
             </div>
           </div>
         </div>
@@ -839,8 +944,11 @@
                   </div>
 
                   <!-- Acciones -->
-                  <div class="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
-                    <button class="btn-danger text-xs py-1.5" @click.stop="deleteEntry(c); expandedConsultaId = null">Eliminar consulta</button>
+                  <div class="flex flex-wrap gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                    <button class="btn-primary text-xs py-1.5 gap-1.5" @click.stop="openEnrichMenu(c)">
+                      ＋ Agregar
+                    </button>
+                    <button class="btn-danger text-xs py-1.5" @click.stop="deleteEntry(c); expandedConsultaId = null">Eliminar</button>
                   </div>
                 </div>
               </div>
@@ -925,7 +1033,7 @@
 
         <!-- ===== MEDICIONES ===== -->
         <!-- ===== MEDICIONES + ESTADÍSTICAS (fusionadas) ===== -->
-        <div x-show="activeSection === 'mediciones'" class="animate-fade-in space-y-4">
+        <div x-show="activeSection === 'estadisticas'" class="animate-fade-in space-y-4">
           <div class="flex items-center justify-between">
             <h2 class="text-lg font-bold">📏 Mediciones y evolución</h2>
             <button class="btn-primary" @click="openModal('medicion')">+ Agregar</button>
@@ -1717,6 +1825,162 @@
             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
               <button class="btn-danger justify-center" style="flex:0.8" @click="deleteEntry(modal.entry); modal.show=false">Eliminar</button>
               <button class="btn-primary flex-1 justify-center" @click="updateExamStatus(modal.entry, modal.entry.status || 'Pendiente')">💾 Guardar</button>
+            </div>
+          </div>
+        </template>
+
+        <!-- ===== ENRICH MENU (overlay) ===== -->
+        <template x-if="enrichMenu">
+          <div class="modal-overlay" @click.self="enrichMenu = false">
+            <div class="modal-box p-5">
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <h3 class="font-bold text-lg">＋ Agregar a la consulta</h3>
+                  <p class="text-xs text-slate-500 mt-0.5" x-text="enrichingConsulta?.title || 'Consulta'"></p>
+                </div>
+                <button class="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl" @click="enrichMenu = false">✕</button>
+              </div>
+              <div class="space-y-2">
+                <button class="w-full flex items-center gap-4 p-4 rounded-2xl bg-teal-50 dark:bg-teal-900/20 hover:bg-teal-100 dark:hover:bg-teal-900/40 transition text-left"
+                        @click="openEnrichModal('physicalItems')">
+                  <div class="w-10 h-10 rounded-xl bg-teal-100 dark:bg-teal-900/50 flex items-center justify-center text-xl flex-shrink-0">📏</div>
+                  <div>
+                    <div class="font-semibold text-sm">Examen físico / Mediciones</div>
+                    <div class="text-xs text-slate-500">Peso, talla, CC, presión, glucosa, etc. Alimenta Estadísticas.</div>
+                  </div>
+                </button>
+                <button class="w-full flex items-center gap-4 p-4 rounded-2xl bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition text-left"
+                        @click="openEnrichModal('medicationItems')">
+                  <div class="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center text-xl flex-shrink-0">💊</div>
+                  <div>
+                    <div class="font-semibold text-sm">Medicamentos / Receta</div>
+                    <div class="text-xs text-slate-500">Se agregan a Medicamentos con horarios y días restantes.</div>
+                  </div>
+                </button>
+                <button class="w-full flex items-center gap-4 p-4 rounded-2xl bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition text-left"
+                        @click="openEnrichModal('examOrderItems')">
+                  <div class="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center text-xl flex-shrink-0">🔬</div>
+                  <div>
+                    <div class="font-semibold text-sm">Órdenes médicas / Exámenes</div>
+                    <div class="text-xs text-slate-500">Se crean en Exámenes con seguimiento de agendamiento.</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ===== ENRICH DETAIL MODAL ===== -->
+        <template x-if="enrichModal.show">
+          <div class="modal-overlay" @click.self="enrichModal.show = false">
+            <div class="modal-box p-5">
+
+              <!-- Header -->
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <h3 class="font-bold text-lg"
+                      x-text="enrichModal.type === 'physicalItems' ? '📏 Examen físico' : enrichModal.type === 'medicationItems' ? '💊 Medicamentos' : '🔬 Órdenes médicas'"></h3>
+                  <p class="text-xs text-slate-500" x-text="enrichingConsulta?.title || ''"></p>
+                </div>
+                <button @click="enrichModal.show = false" class="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl">✕</button>
+              </div>
+
+              <!-- JSON loader toggle -->
+              <div class="mb-4">
+                <button class="btn-secondary w-full justify-center text-xs border-dashed border-sky-300 text-sky-600"
+                        @click="enrichJsonLoader.show = !enrichJsonLoader.show">
+                  📋 Cargar desde JSON
+                </button>
+                <div x-show="enrichJsonLoader.show" class="mt-2 space-y-2" x-transition>
+                  <textarea class="input font-mono text-xs" rows="5" x-model="enrichJsonLoader.text"
+                            placeholder="Pega el JSON aquí..."></textarea>
+                  <div class="flex gap-2">
+                    <button class="btn-secondary flex-1 justify-center text-xs" @click="enrichJsonLoader.show=false">Cancelar</button>
+                    <button class="btn-primary flex-1 justify-center text-xs" @click="loadEnrichFromJSON()">✓ Cargar</button>
+                  </div>
+                  <p x-show="enrichJsonLoader.error" class="text-xs text-red-500" x-text="enrichJsonLoader.error"></p>
+                </div>
+              </div>
+
+              <!-- EXAMEN FÍSICO form -->
+              <template x-if="enrichModal.type === 'physicalItems'">
+                <div class="space-y-3">
+                  <div class="grid grid-cols-2 gap-3">
+                    <div><label class="label">Peso (kg)</label><input type="number" step="0.1" class="input" x-model="form.weight" placeholder="11.2" /></div>
+                    <div><label class="label">Talla (cm)</label><input type="number" class="input" x-model="form.height" placeholder="83" /></div>
+                    <div><label class="label">Circ. craneana (cm)</label><input type="number" step="0.1" class="input" x-model="form.headCircumference" placeholder="47.8" /></div>
+                    <div><label class="label">Temperatura (°C)</label><input type="number" step="0.1" class="input" x-model="form.temperature" placeholder="37.0" /></div>
+                    <div><label class="label">Saturación (%)</label><input type="number" class="input" x-model="form.saturation" placeholder="98" /></div>
+                    <div><label class="label">Frec. cardíaca (lpm)</label><input type="number" class="input" x-model="form.heartRate" placeholder="80" /></div>
+                    <div><label class="label">Presión sistólica</label><input type="number" class="input" x-model="form.bpSys" placeholder="120" /></div>
+                    <div><label class="label">Presión diastólica</label><input type="number" class="input" x-model="form.bpDia" placeholder="80" /></div>
+                    <div><label class="label">Glucosa (mg/dL)</label><input type="number" class="input" x-model="form.glucose" placeholder="90" /></div>
+                    <div><label class="label">Colesterol (mg/dL)</label><input type="number" class="input" x-model="form.cholesterol" placeholder="190" /></div>
+                  </div>
+                  <div><label class="label">Descripción examen físico</label><textarea class="input" rows="2" x-model="form.notes" placeholder="Descripción clínica..."></textarea></div>
+                </div>
+              </template>
+
+              <!-- MEDICAMENTOS form -->
+              <template x-if="enrichModal.type === 'medicationItems'">
+                <div class="space-y-3">
+                  <template x-for="(item, idx) in (form.items || [])" :key="idx">
+                    <div class="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl space-y-2">
+                      <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-amber-700" x-text="'Medicamento ' + (idx+1)"></span>
+                        <button class="text-xs text-red-400 hover:text-red-600" x-show="form.items.length > 1" @click="form.items.splice(idx,1)">Eliminar</button>
+                      </div>
+                      <div><label class="label">Nombre *</label><input class="input" x-model="item.name" placeholder="Ej: Pregabalina 75mg" /></div>
+                      <div class="grid grid-cols-2 gap-2">
+                        <div><label class="label">Dosis</label><input class="input" x-model="item.dose" placeholder="1 cápsula" /></div>
+                        <div>
+                          <label class="label">Frecuencia</label>
+                          <select class="input" x-model="item.frequency">
+                            <option>Diaria</option><option>Cada 8 horas</option><option>Cada 12 horas</option><option>Cada 6 horas</option><option>Cada 2 días</option><option>Semanal</option><option>Según necesidad</option>
+                          </select>
+                        </div>
+                        <div><label class="label">Días de tratamiento</label><input type="number" class="input" x-model="item.durationDays" placeholder="15" /></div>
+                        <div><label class="label">Vía</label><input class="input" x-model="item.route" placeholder="Oral, Sublingual..." /></div>
+                      </div>
+                      <div><label class="label">Observaciones</label><input class="input" x-model="item.notes" /></div>
+                    </div>
+                  </template>
+                  <button class="btn-secondary w-full justify-center text-xs" @click="form.items.push({ name:'', dose:'', frequency:'Diaria', durationDays:'', route:'', notes:'' })">+ Agregar medicamento</button>
+                </div>
+              </template>
+
+              <!-- ÓRDENES MÉDICAS form -->
+              <template x-if="enrichModal.type === 'examOrderItems'">
+                <div class="space-y-3">
+                  <template x-for="(item, idx) in (form.items || [])" :key="idx">
+                    <div class="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl space-y-2">
+                      <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold text-purple-700" x-text="'Orden ' + (idx+1)"></span>
+                        <button class="text-xs text-red-400 hover:text-red-600" x-show="form.items.length > 1" @click="form.items.splice(idx,1)">Eliminar</button>
+                      </div>
+                      <div><label class="label">Nombre del examen *</label><input class="input" x-model="item.name" placeholder="Ej: Hemograma, Eco Doppler..." /></div>
+                      <div class="grid grid-cols-2 gap-2">
+                        <div>
+                          <label class="label">Tipo</label>
+                          <select class="input" x-model="item.type">
+                            <option>Laboratorio</option><option>Imagenología</option><option>Dental</option><option>Otro</option>
+                          </select>
+                        </div>
+                        <div><label class="label">Fecha cita (si ya tiene)</label><input type="date" class="input" x-model="item.scheduledDate" /></div>
+                      </div>
+                      <div><label class="label">Indicación / notas</label><input class="input" x-model="item.notes" placeholder="Motivo, código FONASA..." /></div>
+                    </div>
+                  </template>
+                  <button class="btn-secondary w-full justify-center text-xs" @click="form.items.push({ name:'', type:'Otro', notes:'', scheduledDate:'' })">+ Agregar orden</button>
+                </div>
+              </template>
+
+              <!-- Save button -->
+              <div class="flex gap-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                <button class="btn-secondary flex-1 justify-center" @click="enrichModal.show = false">Cancelar</button>
+                <button class="btn-primary flex-1 justify-center" @click="saveEnrichment()">💾 Guardar y vincular</button>
+              </div>
+
             </div>
           </div>
         </template>

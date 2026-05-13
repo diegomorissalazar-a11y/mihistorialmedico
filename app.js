@@ -99,6 +99,8 @@ window.tailwind = window.tailwind || {};
         // Section
         activeSection: 'dashboard',
         medTab: 'activos',
+        expandedExamenId: null,
+        examFilter: '',
         calendarTab: 'controles',
         timelineFilter: '',
         timelineStartDate: '',
@@ -124,6 +126,12 @@ window.tailwind = window.tailwind || {};
         // Modal
         modal: { show: false, type: '', entry: null, editing: false, editForm: {} },
 
+        // Consulta enrichment (phase 2)
+        enrichingConsulta: null,   // consulta being enriched
+        enrichMenu: false,         // show enrich menu
+        enrichModal: { show: false, type: '' },  // add items modal
+        enrichJsonLoader: { show: false, text: '', error: '' },
+
         // Consulta accordion
         expandedConsultaId: null,
 
@@ -144,15 +152,15 @@ window.tailwind = window.tailwind || {};
         // Charts
         charts: {},
 
-        // Nav items — arquitectura simplificada v11
+        // Nav items v16
         navItems: [
-          { id: 'dashboard',    label: 'Inicio',        icon: '🏠', badge: null },
-          { id: 'consultas',    label: 'Consultas',     icon: '🏥', badge: null },
-          { id: 'examenes',     label: 'Exámenes',      icon: '🔬', badge: null },
-          { id: 'medicamentos', label: 'Medicamentos',  icon: '💊', badge: null },
-          { id: 'vacunas',      label: 'Vacunas',       icon: '💉', badge: null },
-          { id: 'mediciones',   label: 'Mediciones',    icon: '📏', badge: null },
-          { id: 'perfil',       label: 'Perfil',        icon: '👤', badge: null },
+          { id: 'dashboard',     label: 'Inicio',        icon: '🏠', badge: null },
+          { id: 'consultas',     label: 'Consultas',     icon: '🏥', badge: null },
+          { id: 'examenes',      label: 'Exámenes',      icon: '🔬', badge: null },
+          { id: 'medicamentos',  label: 'Medicamentos',  icon: '💊', badge: null },
+          { id: 'vacunas',       label: 'Vacunas',       icon: '💉', badge: null },
+          { id: 'estadisticas',  label: 'Estadísticas',  icon: '📊', badge: null },
+          { id: 'perfil',        label: 'Perfil',        icon: '👤', badge: null },
         ],
         mobileNavItems: [
           { id: 'dashboard',    label: 'Inicio',       icon: '🏠' },
@@ -169,7 +177,7 @@ window.tailwind = window.tailwind || {};
           this.$watch('darkMode', v => localStorage.setItem('darkMode', v));
           this.$watch('activeSection', section => {
             this.$nextTick(() => {
-              if (section === 'mediciones') this.renderCharts();
+              if (section === 'estadisticas') this.renderCharts();
             });
           });
 
@@ -1104,7 +1112,8 @@ window.tailwind = window.tailwind || {};
               subtype:   item.type || item.subtype || 'Otro',
               notes:     item.notes || '',
               date:      consulta.date,
-              status:    'Pendiente',
+              status:    item.scheduledDate ? 'Agendado' : 'Pendiente',
+              scheduledDate: item.scheduledDate || '',
               doctor:    consulta.doctor  || '',
               hospital:  consulta.hospital || '',
               sourceConsultaId:    consulta.id    || '',
@@ -1604,6 +1613,139 @@ window.tailwind = window.tailwind || {};
           } catch(e) {
             this.showToast('Error al guardar: ' + e.message, 'error');
           }
+        },
+
+        // ---- ENRIQUECER CONSULTA (Fase 2) ----
+        openEnrichMenu(consulta) {
+          this.enrichingConsulta = consulta;
+          this.enrichMenu = true;
+        },
+
+        openEnrichModal(type) {
+          this.enrichMenu = false;
+          this.enrichJsonLoader = { show: false, text: '', error: '' };
+          this.enrichModal = { show: true, type };
+          // Pre-init form
+          if (type === 'physicalItems') {
+            this.form = { weight:'', height:'', headCircumference:'', temperature:'', saturation:'', heartRate:'', bpSys:'', bpDia:'', glucose:'', cholesterol:'', notes:'' };
+          } else if (type === 'medicationItems') {
+            this.form = { items: [{ name:'', dose:'', frequency:'Diaria', durationDays:'', route:'', notes:'' }] };
+          } else if (type === 'examOrderItems') {
+            this.form = { items: [{ name:'', type:'Otro', notes:'', scheduledDate:'' }] };
+          }
+        },
+
+        loadEnrichFromJSON() {
+          this.enrichJsonLoader.error = '';
+          let data;
+          try { data = JSON.parse(this.enrichJsonLoader.text.trim()); }
+          catch(e) { this.enrichJsonLoader.error = 'JSON inválido'; return; }
+
+          const type = this.enrichModal.type;
+          if (type === 'physicalItems') {
+            const p = Array.isArray(data) ? data[0] : data;
+            this.form = {
+              weight: p.weight || p.peso || '',
+              height: p.height || p.talla || '',
+              headCircumference: p.headCircumference || p.cc || p.circunferenciaCraneana || '',
+              temperature: p.temperature || p.temperatura || '',
+              saturation: p.saturation || p.saturacion || '',
+              heartRate: p.heartRate || p.frecuenciaCardiaca || '',
+              bpSys: p.bpSys || p.presionSistolica || '',
+              bpDia: p.bpDia || p.presionDiastolica || '',
+              glucose: p.glucose || p.glucosa || '',
+              cholesterol: p.cholesterol || p.colesterol || '',
+              notes: p.notes || p.descripcion || ''
+            };
+          } else if (type === 'medicationItems') {
+            const arr = Array.isArray(data) ? data : (data.medicationItems || [data]);
+            this.form = { items: arr.map(m => ({
+              name: m.name || m.nombre || '',
+              dose: m.dose || m.dosis || '',
+              frequency: m.frequency || m.frecuencia || 'Diaria',
+              durationDays: String(m.durationDays || m.dias || ''),
+              route: m.route || m.via || '',
+              notes: m.notes || m.observaciones || ''
+            }))};
+          } else if (type === 'examOrderItems') {
+            const arr = Array.isArray(data) ? data : (data.examOrderItems || [data]);
+            this.form = { items: arr.map(o => ({
+              name: o.name || o.nombre || '',
+              type: o.type || o.tipo || 'Otro',
+              notes: o.notes || o.indicacion || '',
+              scheduledDate: o.scheduledDate || ''
+            }))};
+          }
+          this.enrichJsonLoader.show = false;
+          this.enrichJsonLoader.text = '';
+          this.showToast('JSON cargado ✓ — revisa y guarda');
+        },
+
+        async saveEnrichment() {
+          const c = this.enrichingConsulta;
+          if (!c) return;
+          const type = this.enrichModal.type;
+          const patch = {};
+
+          if (type === 'physicalItems') {
+            // Save physical items
+            const f = this.form;
+            const items = [];
+            if (f.weight)            { patch.weight = f.weight; items.push({ type:'Peso', value: f.weight, unit:'kg' }); }
+            if (f.height)            { patch.height = f.height; items.push({ type:'Talla', value: f.height, unit:'cm' }); }
+            if (f.headCircumference) { patch.headCircumference = f.headCircumference; items.push({ type:'Circunferencia craneana', value: f.headCircumference, unit:'cm' }); }
+            if (f.temperature)       { patch.temperature = f.temperature; items.push({ type:'Temperatura', value: f.temperature, unit:'°C' }); }
+            if (f.saturation)        { patch.saturation = f.saturation; items.push({ type:'Saturación', value: f.saturation, unit:'%' }); }
+            if (f.heartRate)         { patch.heartRate = f.heartRate; items.push({ type:'Frecuencia cardíaca', value: f.heartRate, unit:'lpm' }); }
+            if (f.bpSys)             { patch.bpSys = f.bpSys; }
+            if (f.bpDia)             { patch.bpDia = f.bpDia; if (f.bpSys) items.push({ type:'Presión arterial', value: f.bpSys + '/' + f.bpDia, unit:'mmHg' }); }
+            if (f.glucose)           { patch.glucose = f.glucose; items.push({ type:'Glucosa', value: f.glucose, unit:'mg/dL' }); }
+            if (f.cholesterol)       { patch.cholesterol = f.cholesterol; items.push({ type:'Colesterol', value: f.cholesterol, unit:'mg/dL' }); }
+            if (f.notes)             { patch.physicalExam = f.notes; }
+            patch.physicalItems = [...(c.physicalItems || []), ...items];
+
+            // Also create a medicion record
+            await this.createLinkedMeasurementFromConsulta({ ...c, ...patch });
+          }
+
+          if (type === 'medicationItems') {
+            const newItems = (this.form.items || []).filter(m => m.name);
+            patch.medicationItems = [...(c.medicationItems || []), ...newItems];
+            // Create medication records
+            await this.createLinkedMedicationsFromConsulta({ ...c, medicationItems: newItems });
+          }
+
+          if (type === 'examOrderItems') {
+            const newItems = (this.form.items || []).filter(o => o.name);
+            patch.examOrderItems = [...(c.examOrderItems || []), ...newItems];
+            // Create exam records with scheduledDate
+            await this.createLinkedExamOrdersFromConsulta({ ...c, examOrderItems: newItems });
+          }
+
+          // Update consulta in Firestore
+          try {
+            if (isFirebaseReady && this.currentUser) {
+              await this.profilePath().collection('consultas').doc(c.id).set(patch, { merge: true });
+            }
+            // Update local state
+            this.consultas = this.consultas.map(x => x.id === c.id ? { ...x, ...patch } : x);
+            this.enrichingConsulta = { ...c, ...patch };
+            this.enrichModal.show = false;
+            this.showToast('Guardado y vinculado ✓');
+          } catch(e) {
+            this.showToast('Error: ' + e.message, 'error');
+          }
+        },
+
+        // ── Exam scheduled date helpers ───────────────────────────────────────
+        examenesConFecha() {
+          return this.examenes.filter(e => e.scheduledDate && e.status !== 'Completado');
+        },
+
+        daysUntilExam(exam) {
+          if (!exam.scheduledDate) return null;
+          const d = exam.scheduledDate?.toDate ? exam.scheduledDate.toDate() : new Date(exam.scheduledDate);
+          return Math.ceil((d - new Date()) / (1000 * 60 * 60 * 24));
         },
 
         // ---- PERFIL EDICIÓN ----
