@@ -1209,21 +1209,23 @@ window.tailwind = window.tailwind || {};
 
         // ---- CHARTS ----
         renderCharts() {
+          // Double nextTick + setTimeout to ensure x-show has rendered the canvas
           this.$nextTick(() => {
-            this.renderGrowthChart('weightGrowthChart', 'weight', 'Peso', 'kg', '#0ea5e9');
-            this.renderGrowthChart('heightGrowthChart', 'height', 'Talla', 'cm', '#8b5cf6');
-            this.renderMetricChart('headCircumferenceChart', 'headCircumference', 'Circunferencia craneana (cm)', '#14b8a6');
-            this.renderMetricChart('glucoseChart', 'glucose', 'Glucosa (mg/dL)', '#f59e0b');
-            this.renderMetricChart('bpSysChart', 'bpSys', 'Presión sistólica', '#ef4444');
-            this.renderMetricChart('bpDiaChart', 'bpDia', 'Presión diastólica', '#ec4899');
-            this.renderMetricChart('cholesterolChart', 'cholesterol', 'Colesterol (mg/dL)', '#10b981');
+            setTimeout(() => {
+              this.renderGrowthChart('weightGrowthChart', 'weight', 'Peso', 'kg', '#0ea5e9');
+              this.renderGrowthChart('heightGrowthChart', 'height', 'Talla', 'cm', '#8b5cf6');
+              this.renderMetricChart('headCircumferenceChart', 'headCircumference', 'Circunferencia craneana (cm)', '#14b8a6');
+              this.renderMetricChart('glucoseChart', 'glucose', 'Glucosa (mg/dL)', '#f59e0b');
+              this.renderMetricChart('bpSysChart', 'bpSys', 'Presión sistólica', '#ef4444');
+              this.renderMetricChart('bpDiaChart', 'bpDia', 'Presión diastólica', '#ec4899');
+              this.renderMetricChart('cholesterolChart', 'cholesterol', 'Colesterol (mg/dL)', '#10b981');
+            }, 120);
           });
         },
 
         renderGrowthChart(canvasId, key, label, unit, color) {
           const el = document.getElementById(canvasId);
-          if (!el) return;
-          this.destroyChart(canvasId);
+          if (!el || el.offsetParent === null) return; // skip if hidden
           // Deduplicate by date (keep highest value per date) and sort chronologically
           const seen = new Map();
           for (const m of this.mediciones) {
@@ -1241,6 +1243,7 @@ window.tailwind = window.tailwind || {};
             return da - db2;
           });
           if (series.length < 1) return;
+          this.destroyChart(canvasId); // destroy only after we know we'll recreate
 
           const labels = series.map(m => this.formatDate(m.date?.toDate ? m.date.toDate() : new Date(m.date)));
           const values = series.map(m => Number(m[key]));
@@ -1285,6 +1288,7 @@ window.tailwind = window.tailwind || {};
                       const i = item.dataIndex;
                       const v = values[i];
                       const d = deltas[i];
+                      const m = series[i];
                       const lines = [`${label}: ${v} ${unit}`];
                       if (d) {
                         const sign = Number(d.diff) >= 0 ? '+' : '';
@@ -1293,6 +1297,9 @@ window.tailwind = window.tailwind || {};
                       } else {
                         lines.push('Primer registro');
                       }
+                      // Add percentile if available
+                      const pct = this.getPercentile(key, m);
+                      if (pct) lines.push(`Percentil OMS: P${pct}`);
                       return lines;
                     }
                   }
