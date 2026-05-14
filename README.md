@@ -150,3 +150,6 @@ Tablas OMS 2006 (Minsal Chile) para 0–24 meses. Requiere sexo y fecha de nacim
 - Fix error `getContext null`: gráficos esperan que el DOM esté visible antes de renderizar (setTimeout + guard offsetParent)
 - Fix tooltip estadísticas: ahora muestra valor, variación kg/%, control anterior y percentil OMS
 - destroyChart movido después de validar datos para evitar crash en canvas vacío
+
+### v22 — 14/05/2026
+- Fix gráficos se expandían infinitamente: reemplazado maintainAspectRatio:false por aspectRatio:2.5 fijo

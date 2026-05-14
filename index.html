@@ -1104,14 +1104,14 @@
           <div class="card" x-show="mediciones.filter(m=>m.weight).length > 1">
             <h3 class="text-sm font-semibold mb-1">📈 Evolución del peso</h3>
             <p class="text-xs text-slate-400 mb-3">Toca cada punto para ver la variación respecto al control anterior</p>
-            <canvas id="weightGrowthChart" style="height:200px;width:100%"></canvas>
+            <canvas id="weightGrowthChart"></canvas>
           </div>
 
           <!-- Gráfico de crecimiento — Talla con delta tooltip -->
           <div class="card" x-show="mediciones.filter(m=>m.height).length > 1">
             <h3 class="text-sm font-semibold mb-1">📈 Evolución de la talla</h3>
             <p class="text-xs text-slate-400 mb-3">Toca cada punto para ver la variación respecto al control anterior</p>
-            <canvas id="heightGrowthChart" style="height:200px;width:100%"></canvas>
+            <canvas id="heightGrowthChart"></canvas>
           </div>
 
           <!-- Otros gráficos de métricas -->

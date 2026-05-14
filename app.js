@@ -1276,7 +1276,8 @@ window.tailwind = window.tailwind || {};
             },
             options: {
               responsive: true,
-              maintainAspectRatio: false,
+              maintainAspectRatio: true,
+              aspectRatio: 2.5,
               interaction: { mode: 'index', intersect: false },
               plugins: {
                 legend: { display: false },
@@ -1381,7 +1382,8 @@ window.tailwind = window.tailwind || {};
             },
             options: {
               responsive: true,
-              maintainAspectRatio: false,
+              maintainAspectRatio: true,
+              aspectRatio: 2.5,
               plugins: { legend: { display: false } },
               scales: { y: { beginAtZero: false }, x: { ticks: { maxRotation: 0, autoSkip: true } } }
             }
